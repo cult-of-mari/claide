@@ -4,23 +4,20 @@ use {
     serde::{Deserialize, Serialize},
     std::{
         borrow::Cow,
-        collections::{
-            btree_map::{self, BTreeMap},
-            hash_map::{self, HashMap},
-        },
+        collections::hash_map::{self, HashMap},
         env,
         fmt::Write as _,
-        hash::{DefaultHasher, Hash, Hasher},
         io,
         path::PathBuf,
         time::Instant,
     },
     tracing::{debug, info},
+    twilight_cache_inmemory::InMemoryCache,
     twilight_gateway::{Event, Intents, ShardId},
     twilight_model::{
-        channel::Message,
+        channel::{message::MessageType, Message},
         id::{
-            marker::{ChannelMarker, MessageMarker, UserMarker},
+            marker::{AttachmentMarker, ChannelMarker, UserMarker},
             Id,
         },
     },
@@ -29,17 +26,11 @@ use {
 
 pub const CLYDE_ID: Id<UserMarker> = Id::new(1116684158199144468);
 
-pub struct CachedMessage {
-    pub attachments: Vec<u64>,
-    pub content: String,
-    pub author: String,
-}
-
 pub struct Clyde {
+    cache: InMemoryCache,
     gateway: twilight_gateway::Shard,
-    message_cache: HashMap<Id<ChannelMarker>, BTreeMap<Id<MessageMarker>, CachedMessage>>,
     rest: twilight_http::Client,
-    url_cache: HashMap<u64, String>,
+    url_cache: HashMap<Id<AttachmentMarker>, String>,
 }
 
 #[derive(Serialize)]
@@ -70,14 +61,18 @@ pub struct LlamaResponse {
 
 impl Clyde {
     pub fn new(token: String) -> Self {
-        let intents = Intents::GUILD_MESSAGES | Intents::MESSAGE_CONTENT;
-
         Self {
-            gateway: twilight_gateway::Shard::new(ShardId::ONE, token.clone(), intents),
-            message_cache: HashMap::new(),
+            cache: InMemoryCache::builder().message_cache_size(50).build(),
+            gateway: twilight_gateway::Shard::new(ShardId::ONE, token.clone(), Intents::all()),
             rest: twilight_http::Client::new(token),
             url_cache: HashMap::new(),
         }
+    }
+
+    pub async fn start_typing(&self, channel_id: Id<ChannelMarker>) -> anyhow::Result<()> {
+        self.rest.create_typing_trigger(channel_id).await?;
+
+        Ok(())
     }
 
     pub async fn process_message(&mut self, message: &Message) -> anyhow::Result<()> {
@@ -88,80 +83,131 @@ impl Clyde {
         }
 
         for attachment in &message.attachments {
-            if let Err(error) = self.process_url(&attachment.url).await {
+            if let Err(error) = self.process_url(attachment.id, &attachment.url).await {
                 println!("{error:?}");
             }
         }
 
-        let channel = self
-            .message_cache
-            .entry(message.channel_id)
-            .or_insert_with(BTreeMap::new);
+        let channel_id = message.channel_id;
 
-        let btree_map::Entry::Vacant(message_entry) = channel.entry(message.id) else {
+        let Some(channel) = self.cache.channel(channel_id) else {
+            debug!("Ignored unknown channel");
+
             return Ok(());
         };
 
-        let attachments = message
-            .attachments
-            .iter()
-            .map(|attachment| attachment.id.get())
-            .collect();
+        let Some(channel_name) = channel.name.as_deref() else {
+            debug!("Ignored channel without a name");
 
-        message_entry.insert(CachedMessage {
-            attachments,
-            content: message.content.clone(),
-            author: if message.author.id == CLYDE_ID {
-                String::from("Clyde")
-            } else {
-                message.author.name.clone()
-            },
-        });
+            return Ok(());
+        };
 
-        /*let image_data = self
-        .url_cache
-        .values()
-        .enumerate()
-        .map(|(id, data)| LlamaImageData {
-            id: id as u32,
-            data: data.clone(),
-        })
-        .collect();*/
+        let Some(channel_messages) = self.cache.channel_messages(channel_id) else {
+            debug!("Ignored channel without any messages");
 
-        let mut prompt = channel.values().fold(String::new(), |mut string, message| {
-            let CachedMessage {
-                attachments: _,
-                content,
-                author,
-            } = message;
+            return Ok(());
+        };
 
-            if author == "Clyde" {
-                let _ = write!(string, "<|im_start|>assistant\n{content}<|im_end|>\n");
-            } else {
-                let _ = write!(string, "<|im_start|>user\n{content}<|im_end|>\n");
+        let mut channel_information =
+            format!("You are currently in the channel #{channel_name} (<#{channel_id}>).\n");
+
+        if let Some(channel_topic) = channel.topic.as_deref() {
+            write!(channel_information, "Channel Topic: {channel_topic}\n")?;
+        }
+
+        let mut users = HashMap::new();
+        let mut message_list = Vec::new();
+
+        for message_id in channel_messages.iter().copied().rev() {
+            let Some(message) = self.cache.message(message_id) else {
+                continue;
+            };
+
+            let author_id = message.author();
+
+            let Some(author) = self.cache.user(author_id) else {
+                continue;
+            };
+
+            let author_name = author.name.as_str();
+
+            users
+                .entry(author_id)
+                .or_insert_with(|| format!("{author_name} (<@{author_id}>)"));
+
+            match message.kind() {
+                MessageType::Regular => {
+                    let content = message.content();
+                    let mut message_information = format!("user\n{author_name}: {content}\n");
+
+                    for embed in message.embeds() {
+                        if let Some(embed_title) = embed.title.as_deref() {
+                            write!(
+                                message_information,
+                                "{author_name} (embed): {embed_title}\n"
+                            )?;
+                        }
+
+                        if let Some(embed_description) = embed.description.as_deref() {
+                            write!(
+                                message_information,
+                                "{author_name} (embed): {embed_description}\n"
+                            )?;
+                        }
+
+                        if let Some(embed_footer) = embed.footer.as_ref() {
+                            let embed_footer_text = embed_footer.text.as_str();
+
+                            write!(
+                                message_information,
+                                "{author_name} (embed): {embed_footer_text}\n"
+                            )?;
+                        }
+                    }
+
+                    message_list.push(message_information.trim().into());
+                }
+                MessageType::UserJoin => {
+                    message_list.push(format!("system\nUser {author_name} has joined the server."));
+                }
+                MessageType::GuildBoost
+                | MessageType::GuildBoostTier1
+                | MessageType::GuildBoostTier2
+                | MessageType::GuildBoostTier3 => {
+                    message_list.push(format!(
+                        "system\nUser {author_name} has boosted the server."
+                    ));
+                }
+                _ => continue,
             }
+        }
 
-            string
-        });
-
-        if prompt.is_empty() {
+        if message_list.is_empty() {
             return Ok(());
         }
 
-        /*let message = self
-        .rest
-        .create_message(message.channel_id)
-        .content("Generating response... <:clyde:1180421652832591892>")?
-        .await?
-        .model()
-        .await?;*/
+        let system_prompt = include_str!("system_prompt.txt").trim();
 
-        self.rest.create_typing_trigger(message.channel_id).await?;
+        let channel_information = channel_information.trim();
 
-        prompt.insert_str(0, include_str!("system_prompt.txt"));
-        prompt.push_str("<|im_start|>assistant\n");
+        let mut user_information = users.into_values().collect::<Vec<_>>();
 
-        info!("prompt = {prompt:?}");
+        user_information.sort_unstable();
+
+        let user_information = user_information.join("\n");
+        let user_information = user_information.trim();
+
+        let message_list = message_list.join("<|im_end|>\n<|im_start|>");
+        let mut message_list = String::from(message_list.trim());
+
+        message_list.insert_str(0, "<|im_start|>");
+        message_list.push_str("<|im_end|>");
+
+        let prompt = format!("<|im_start|>system\n{system_prompt}\n{channel_information}\n{user_information}<|im_end|>\n{message_list}\n<|im_start|>assistant\n");
+
+        self.start_typing(channel_id).await?;
+
+        info!("prompt = {prompt}");
 
         let start = Instant::now();
         let response = reqwest::Client::new()
@@ -213,13 +259,12 @@ impl Clyde {
         Ok(())
     }
 
-    pub async fn process_url(&mut self, url: &str) -> anyhow::Result<()> {
-        let mut hasher = DefaultHasher::new();
-
-        url.hash(&mut hasher);
-
-        let id = hasher.finish();
-        let hash_map::Entry::Vacant(entry) = self.url_cache.entry(id) else {
+    pub async fn process_url(
+        &mut self,
+        attachment_id: Id<AttachmentMarker>,
+        url: &str,
+    ) -> anyhow::Result<()> {
+        let hash_map::Entry::Vacant(entry) = self.url_cache.entry(attachment_id) else {
             debug!("Skipped `{url}`, already processed.");
 
             return Ok(());
@@ -244,6 +289,8 @@ impl Clyde {
                 }
                 _ => return Ok(()),
             };
+
+            self.cache.update(&event);
 
             if let Event::MessageCreate(message) = event {
                 self.process_message(&message).await?;
