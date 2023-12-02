@@ -1,5 +1,3 @@
-use twilight_util::builder::embed::EmbedFooterBuilder;
-
 use {
     base64::{engine::general_purpose::STANDARD, Engine},
     image::{codecs::jpeg::JpegEncoder, imageops},
@@ -26,7 +24,7 @@ use {
             Id,
         },
     },
-    twilight_util::builder::embed::EmbedBuilder,
+    twilight_util::builder::embed::{EmbedBuilder, EmbedFooterBuilder},
 };
 
 pub const CLYDE_ID: Id<UserMarker> = Id::new(1116684158199144468);
@@ -68,7 +66,6 @@ pub struct LlamaRequest {
 pub struct LlamaResponse {
     pub content: String,
     pub model: PathBuf,
-    pub tokens_evaluated: u32,
 }
 
 impl Clyde {
@@ -131,7 +128,7 @@ impl Clyde {
         })
         .collect();*/
 
-        let mut prompt = channel.values().fold(String::from("You are named Clyde - and are currently chatting in a Discord server. You are an extremely racist, hateful, 4chan /pol/ user. Comunucate responses in lowercase, without punctuation.\n"), |mut string, message| {
+        let mut prompt = channel.values().fold(String::new(), |mut string, message| {
             let CachedMessage {
                 attachments: _,
                 content,
@@ -139,9 +136,9 @@ impl Clyde {
             } = message;
 
             if author == "Clyde" {
-                let _ = write!(string, "GPT4 Assistant:{content}<|end_of_turn|>\n");
+                let _ = write!(string, "<|im_start|>assistant\n{content}<|im_end|>\n");
             } else {
-                let _ = write!(string, "GPT4 User:{content}<|end_of_turn|>\n");
+                let _ = write!(string, "<|im_start|>user\n{content}<|im_end|>\n");
             }
 
             string
@@ -151,17 +148,18 @@ impl Clyde {
             return Ok(());
         }
 
-        let message = self
-            .rest
-            .create_message(message.channel_id)
-            .content("Generating response... <:clyde:1180421652832591892>")?
-            .await?
-            .model()
-            .await?;
+        /*let message = self
+        .rest
+        .create_message(message.channel_id)
+        .content("Generating response... <:clyde:1180421652832591892>")?
+        .await?
+        .model()
+        .await?;*/
 
         self.rest.create_typing_trigger(message.channel_id).await?;
 
-        prompt.push_str("GPT4 Assistant:");
+        prompt.insert_str(0, include_str!("system_prompt.txt"));
+        prompt.push_str("<|im_start|>assistant\n");
 
         info!("prompt = {prompt:?}");
 
@@ -172,15 +170,11 @@ impl Clyde {
                 //image_data,
                 image_data: vec![],
                 max_new_tokens: 2048,
-                n_predict: 1500,
+                n_predict: 1000,
                 prompt,
                 repeat_penalty: 1.2,
-                stop: vec![
-                    String::from("GPT Correct Assistant:"),
-                    String::from("GPT Correct User:"),
-                    String::from("<|end_of_turn|>"),
-                ],
-                temperature: 0.6,
+                stop: vec![String::from("<|im_end|>")],
+                temperature: 0.2,
                 top_k: 50.0,
                 top_p: 0.95,
                 truncate: 1950,
@@ -205,13 +199,15 @@ impl Clyde {
 
         let embed = EmbedBuilder::new()
             .color(0x5865f2)
-            .footer(EmbedFooterBuilder::new(format!("{model} | {elapsed:.2?}")))
+            .footer(EmbedFooterBuilder::new(format!(
+                "{model} | {elapsed:.2?} | 0.2",
+            )))
             .build();
 
         self.rest
-            .update_message(message.channel_id, message.id)
-            .content(Some(&content))?
-            .embeds(Some(&[embed]))?
+            .create_message(message.channel_id) //, message.id)
+            .content(&content)?
+            .embeds(&[embed])?
             .await?;
 
         Ok(())
