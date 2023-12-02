@@ -3,13 +3,12 @@ use {
     image::{codecs::jpeg::JpegEncoder, imageops},
     serde::{Deserialize, Serialize},
     std::{
-        borrow::Cow,
         collections::hash_map::{self, HashMap},
         env,
         fmt::Write as _,
         io,
         path::PathBuf,
-        time::Instant,
+        time::{Duration, Instant},
     },
     tracing::{debug, info},
     twilight_cache_inmemory::InMemoryCache,
@@ -50,6 +49,7 @@ pub struct LlamaRequest {
     pub temperature: f32,
     pub top_k: f32,
     pub top_p: f32,
+    pub n_keep: i32,
     pub truncate: u32,
 }
 
@@ -57,6 +57,26 @@ pub struct LlamaRequest {
 pub struct LlamaResponse {
     pub content: String,
     pub model: PathBuf,
+    pub stopped_eos: bool,
+    pub stopped_limit: bool,
+    pub stopping_word: String,
+}
+
+pub struct LlamaResult {
+    pub content: String,
+    pub model: String,
+    pub duration: Duration,
+    pub stop_reason: String,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct LlamaTokenize {
+    content: String,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct LlamaDetokenize {
+    tokens: Vec<i32>,
 }
 
 impl Clyde {
@@ -79,6 +99,32 @@ impl Clyde {
         if message.author.id == CLYDE_ID {
             debug!("Ignored self message");
 
+            return Ok(());
+        }
+
+        if !matches!(
+            message.kind,
+            MessageType::Regular
+                | MessageType::Reply
+                | MessageType::UserJoin
+                | MessageType::GuildBoost
+                | MessageType::GuildBoostTier1
+                | MessageType::GuildBoostTier2
+                | MessageType::GuildBoostTier3
+                | MessageType::ChannelMessagePinned
+        ) {
+            return Ok(());
+        }
+
+        if !(message
+            .mentions
+            .iter()
+            .any(|mention| mention.id == CLYDE_ID)
+            || message
+                .referenced_message
+                .as_ref()
+                .is_some_and(|message| message.author.id == CLYDE_ID))
+        {
             return Ok(());
         }
 
@@ -131,44 +177,55 @@ impl Clyde {
 
             let author_name = author.name.as_str();
 
-            users
-                .entry(author_id)
-                .or_insert_with(|| format!("{author_name} (<@{author_id}>)"));
+            users.entry(author_id).or_insert_with(|| {
+                (
+                    author_name.to_string(),
+                    format!("{author_name} (<@{author_id}>)"),
+                )
+            });
 
             match message.kind() {
-                MessageType::Regular => {
+                MessageType::Regular | MessageType::Reply => {
                     let content = message.content();
-                    let mut message_information = format!("user\n{author_name}: {content}\n");
 
-                    for embed in message.embeds() {
-                        if let Some(embed_title) = embed.title.as_deref() {
-                            write!(
-                                message_information,
-                                "{author_name} (embed): {embed_title}\n"
-                            )?;
+                    if author_id == CLYDE_ID {
+                        message_list.push(format!("assistant\n{content}"));
+                    } else {
+                        let mut message_information = format!("user\n{author_name}: {content}\n");
+
+                        for embed in message.embeds() {
+                            if let Some(embed_title) = embed.title.as_deref() {
+                                write!(
+                                    message_information,
+                                    "{author_name} (embed): {embed_title}\n"
+                                )?;
+                            }
+
+                            if let Some(embed_description) = embed.description.as_deref() {
+                                write!(
+                                    message_information,
+                                    "{author_name} (embed): {embed_description}\n"
+                                )?;
+                            }
+
+                            if let Some(embed_footer) = embed.footer.as_ref() {
+                                let embed_footer_text = embed_footer.text.as_str();
+
+                                write!(
+                                    message_information,
+                                    "{author_name} (embed): {embed_footer_text}\n"
+                                )?;
+                            }
                         }
 
-                        if let Some(embed_description) = embed.description.as_deref() {
-                            write!(
-                                message_information,
-                                "{author_name} (embed): {embed_description}\n"
-                            )?;
-                        }
-
-                        if let Some(embed_footer) = embed.footer.as_ref() {
-                            let embed_footer_text = embed_footer.text.as_str();
-
-                            write!(
-                                message_information,
-                                "{author_name} (embed): {embed_footer_text}\n"
-                            )?;
-                        }
+                        message_list.push(message_information.trim().into());
                     }
-
-                    message_list.push(message_information.trim().into());
                 }
                 MessageType::UserJoin => {
                     message_list.push(format!("system\nUser {author_name} has joined the server."));
+                }
+                MessageType::ChannelMessagePinned => {
+                    message_list.push(format!("system\nUser {author_name} pinned a message."));
                 }
                 MessageType::GuildBoost
                 | MessageType::GuildBoostTier1
@@ -190,11 +247,14 @@ impl Clyde {
 
         let channel_information = channel_information.trim();
 
-        let mut user_information = users.into_values().collect::<Vec<_>>();
+        let mut user_information = users
+            .values()
+            .map(|(_, u)| u.to_string())
+            .collect::<Vec<_>>();
 
         user_information.sort_unstable();
 
-        let user_information = user_information.join("\n");
+        let user_information = user_information.join(",");
         let user_information = user_information.trim();
 
         let message_list = message_list.join("<|im_end|>\n<|im_start|>");
@@ -203,58 +263,85 @@ impl Clyde {
         message_list.insert_str(0, "<|im_start|>");
         message_list.push_str("<|im_end|>");
 
-        let prompt = format!("<|im_start|>system\n{system_prompt}\n{channel_information}\n{user_information}<|im_end|>\n{message_list}\n<|im_start|>assistant\n");
+        let mut prompt = format!("<|im_start|>system\n{system_prompt}\n{channel_information}\nUsers in this channel:{user_information}<|im_end|>\nConversation:\n");
+        info!("system_prompt = {prompt}");
+
+        let _keep_tokens = llama_tokenize(&prompt).await?.len();
+        let dynamic_prompt = format!("{message_list}\n<|im_start|>assistant\nClyde:");
+        info!("dyanmic_prompt = {dynamic_prompt}");
+
+        prompt.push_str(&dynamic_prompt);
+        info!("full_prompt = {prompt}");
 
         self.start_typing(channel_id).await?;
 
-        info!("prompt = {prompt}");
+        let in_tokens = llama_tokenize(&prompt).await?.len();
 
-        let start = Instant::now();
-        let response = reqwest::Client::new()
-            .post("http://127.0.0.1:8080/completion")
-            .json(&LlamaRequest {
-                //image_data,
-                image_data: vec![],
-                max_new_tokens: 2048,
-                n_predict: 1000,
-                prompt,
-                repeat_penalty: 1.2,
-                stop: vec![String::from("<|im_end|>")],
-                temperature: 0.2,
-                top_k: 50.0,
-                top_p: 0.95,
-                truncate: 1950,
-            })
-            .send()
-            .await?
-            .json::<LlamaResponse>()
-            .await?;
+        let mut stop = vec![String::from("<|im_end|>")];
 
-        let elapsed = Instant::now().duration_since(start);
-        let content = if response.content.is_empty() {
-            "Didn't generate a response <:clyde:1180421652832591892>"
+        stop.extend(users.values().map(|(u, _)| u.to_string()));
+
+        let LlamaResult {
+            content,
+            model,
+            duration,
+            stop_reason,
+        } = llama_completion(LlamaRequest {
+            //image_data,
+            image_data: vec![],
+            max_new_tokens: 2048,
+            n_predict: 2048,
+            prompt,
+            repeat_penalty: 1.2,
+            stop,
+            temperature: 0.2,
+            top_k: 50.0,
+            top_p: 0.95,
+            n_keep: 0, //dbg!(keep_tokens).try_into().unwrap(),
+            truncate: 1950,
+        })
+        .await?;
+
+        let out_tokens = llama_tokenize(&content).await?.len();
+
+        let content = if content.is_empty() {
+            "<:clyde:1180421652832591892> *Clyde did not generate a response.*"
         } else {
-            response.content.as_str()
+            content.as_str()
         };
 
-        let model = response
-            .model
-            .file_stem()
-            .map(|name| name.to_string_lossy())
-            .unwrap_or(Cow::Borrowed("mysterious model"));
+        let content = content.chars().collect::<Vec<_>>();
+        let mut iter = content
+            .chunks(1950)
+            .map(|chunk| chunk.into_iter().collect::<String>())
+            .map(|mut content| {
+                if content.matches("```").count() % 2 == 1 {
+                    content.push_str("```");
+                }
 
-        let embed = EmbedBuilder::new()
-            .color(0x5865f2)
-            .footer(EmbedFooterBuilder::new(format!(
-                "{model} | {elapsed:.2?} | 0.2",
-            )))
-            .build();
+                content
+            })
+            .peekable();
 
-        self.rest
-            .create_message(message.channel_id) //, message.id)
-            .content(&content)?
-            .embeds(&[embed])?
-            .await?;
+        while let Some(content) = iter.next() {
+            let create_message = self
+                .rest
+                .create_message(message.channel_id)
+                .content(&content)?;
+
+            if iter.peek().is_none() {
+                let embed = EmbedBuilder::new()
+                    .color(0x5865f2)
+                    .footer(EmbedFooterBuilder::new(format!(
+                        "model {model} | duration {duration:.2?} | temperature 0.2 | top_k 50 | top_p 0.95 | repeat_penalty 1.2 | in_tokens {in_tokens} | out_tokens {out_tokens} | stop {stop_reason}",
+                    )))
+                    .build();
+
+                create_message.embeds(&[embed])?.await?;
+            } else {
+                create_message.await?;
+            }
+        }
 
         Ok(())
     }
@@ -297,6 +384,62 @@ impl Clyde {
             }
         }
     }
+}
+
+async fn llama_tokenize(string: &str) -> anyhow::Result<Vec<i32>> {
+    let tokens = reqwest::Client::new()
+        .post("http://127.0.0.1:8080/tokenize")
+        .json(&LlamaTokenize {
+            content: string.into(),
+        })
+        .send()
+        .await?
+        .json::<LlamaDetokenize>()
+        .await?
+        .tokens;
+
+    Ok(tokens)
+}
+
+async fn llama_detokenize(tokens: &[i32]) -> anyhow::Result<String> {
+    let content = reqwest::Client::new()
+        .post("http://127.0.0.1:8080/detokenize")
+        .json(&LlamaDetokenize {
+            tokens: tokens.into(),
+        })
+        .send()
+        .await?
+        .json::<LlamaTokenize>()
+        .await?
+        .content;
+
+    Ok(content)
+}
+
+async fn llama_completion(request: LlamaRequest) -> anyhow::Result<LlamaResult> {
+    let start = Instant::now();
+    let response = reqwest::Client::new()
+        .post("http://127.0.0.1:8080/completion")
+        .json(&request)
+        .send()
+        .await?
+        .json::<LlamaResponse>()
+        .await?;
+
+    let duration = Instant::now().duration_since(start);
+
+    Ok(LlamaResult {
+        content: response.content.trim().into(),
+        model: response.model.file_name().unwrap().to_string_lossy().into(),
+        duration,
+        stop_reason: if response.stopped_eos {
+            "eos".into()
+        } else if response.stopped_limit {
+            "limit".into()
+        } else {
+            format!("token {}", response.stopping_word)
+        },
+    })
 }
 
 /// Process an image.
@@ -347,6 +490,22 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
     let token = env::var("CLYDE_TOKEN")?;
+
+    llama_completion(LlamaRequest {
+        //image_data,
+        image_data: vec![],
+        max_new_tokens: 2048,
+        n_predict: 2048,
+        prompt: String::from("<|im_start|>system\nhi<|im_end|>\n<|im_start|>assistant\n"),
+        repeat_penalty: 1.2,
+        stop: vec![String::from("<|im_end|>")],
+        temperature: 0.2,
+        top_k: 50.0,
+        top_p: 0.95,
+        n_keep: 0,
+        truncate: 1950,
+    })
+    .await?;
 
     Clyde::new(token).run().await?;
 
