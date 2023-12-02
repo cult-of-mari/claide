@@ -279,7 +279,7 @@ impl Clyde {
 
         let mut stop = vec![String::from("<|im_end|>")];
 
-        stop.extend(users.values().map(|(u, _)| u.to_string()));
+        stop.extend(users.values().map(|(u, _)| format!("{u}:")));
 
         let LlamaResult {
             content,
