@@ -1,27 +1,33 @@
+use std::collections::{btree_map, BTreeMap};
+
 use {
     base64::{engine::general_purpose::STANDARD, Engine},
     image::{codecs::jpeg::JpegEncoder, imageops},
     serde::{Deserialize, Serialize},
     std::{
-        collections::hash_map::{self, HashMap},
+        collections::hash_map::{self, DefaultHasher, HashMap},
         env,
         fmt::Write as _,
+        hash::{Hash, Hasher},
         io,
-        path::PathBuf,
+        sync::{Arc, Mutex},
         time::{Duration, Instant},
     },
-    tracing::{debug, info},
+    tracing::{debug, info, warn},
     twilight_cache_inmemory::InMemoryCache,
     twilight_gateway::{Event, Intents, ShardId},
     twilight_model::{
         channel::{message::MessageType, Message},
         id::{
-            marker::{AttachmentMarker, ChannelMarker, UserMarker},
+            marker::{ChannelMarker, UserMarker},
             Id,
         },
     },
     twilight_util::builder::embed::{EmbedBuilder, EmbedFooterBuilder},
 };
+
+pub mod discord;
+pub mod prompt;
 
 pub const CLYDE_ID: Id<UserMarker> = Id::new(1116684158199144468);
 
@@ -29,13 +35,13 @@ pub struct Clyde {
     cache: InMemoryCache,
     gateway: twilight_gateway::Shard,
     rest: twilight_http::Client,
-    url_cache: HashMap<Id<AttachmentMarker>, String>,
+    url_cache: Arc<Mutex<HashMap<u16, String>>>,
 }
 
 #[derive(Serialize)]
 pub struct LlamaImageData {
     pub data: String,
-    pub id: u32,
+    pub id: u16,
 }
 
 #[derive(Serialize)]
@@ -53,10 +59,10 @@ pub struct LlamaRequest {
     pub truncate: u32,
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
+#[serde(default)]
 pub struct LlamaResponse {
     pub content: String,
-    pub model: PathBuf,
     pub stopped_eos: bool,
     pub stopped_limit: bool,
     pub stopping_word: String,
@@ -64,7 +70,7 @@ pub struct LlamaResponse {
 
 pub struct LlamaResult {
     pub content: String,
-    pub model: String,
+
     pub duration: Duration,
     pub stop_reason: String,
 }
@@ -85,7 +91,7 @@ impl Clyde {
             cache: InMemoryCache::builder().message_cache_size(50).build(),
             gateway: twilight_gateway::Shard::new(ShardId::ONE, token.clone(), Intents::all()),
             rest: twilight_http::Client::new(token),
-            url_cache: HashMap::new(),
+            url_cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -123,15 +129,17 @@ impl Clyde {
             || message
                 .referenced_message
                 .as_ref()
-                .is_some_and(|message| message.author.id == CLYDE_ID))
+                .is_some_and(|message| message.author.id == CLYDE_ID)
+            || matches!(
+                message.kind,
+                |MessageType::UserJoin| MessageType::GuildBoost
+                    | MessageType::GuildBoostTier1
+                    | MessageType::GuildBoostTier2
+                    | MessageType::GuildBoostTier3
+                    | MessageType::ChannelMessagePinned
+            ))
         {
             return Ok(());
-        }
-
-        for attachment in &message.attachments {
-            if let Err(error) = self.process_url(attachment.id, &attachment.url).await {
-                println!("{error:?}");
-            }
         }
 
         let channel_id = message.channel_id;
@@ -158,10 +166,10 @@ impl Clyde {
             format!("You are currently in the channel #{channel_name} (<#{channel_id}>).\n");
 
         if let Some(channel_topic) = channel.topic.as_deref() {
-            write!(channel_information, "Channel Topic: {channel_topic}\n")?;
+            write!(channel_information, "Channel Topic:{channel_topic}\n")?;
         }
 
-        let mut users = HashMap::new();
+        let mut users = BTreeMap::new();
         let mut message_list = Vec::new();
 
         for message_id in channel_messages.iter().copied().rev() {
@@ -177,12 +185,25 @@ impl Clyde {
 
             let author_name = author.name.as_str();
 
-            users.entry(author_id).or_insert_with(|| {
-                (
-                    author_name.to_string(),
-                    format!("{author_name} (<@{author_id}>)"),
-                )
-            });
+            if let btree_map::Entry::Vacant(entry) = users.entry(author_id) {
+                let mut author_information = format!("{author_name} (<@{author_id}>)");
+
+                if let Some(avatar_hash) = author.avatar.as_ref() {
+                    let user_id = author_id;
+                    let avatar_url = format!(
+                        "https://cdn.discordapp.com/avatars/{user_id}/{avatar_hash}.webp?size=320"
+                    );
+
+                    match self.url(&avatar_url).await {
+                        Ok((image_id, _image_data)) => {
+                            write!(author_information, " (Avatar [img-{image_id}])")?;
+                        }
+                        Err(error) => warn!("{avatar_url}: {error}"),
+                    }
+                }
+
+                entry.insert((String::from(author_name), author_information));
+            }
 
             match message.kind() {
                 MessageType::Regular | MessageType::Reply => {
@@ -192,6 +213,18 @@ impl Clyde {
                         message_list.push(format!("assistant\n{content}"));
                     } else {
                         let mut message_information = format!("user\n{author_name}: {content}\n");
+
+                        for attachment in message.attachments() {
+                            let attachment_url = attachment.url.as_str();
+
+                            match self.url(attachment_url).await {
+                                Ok((image_id, _image_data)) => write!(
+                                    message_information,
+                                    "{author_name} (attachment): [img-{image_id}]"
+                                )?,
+                                Err(error) => warn!("{attachment_url}: {error}"),
+                            }
+                        }
 
                         for embed in message.embeds() {
                             if let Some(embed_title) = embed.title.as_deref() {
@@ -277,18 +310,34 @@ impl Clyde {
 
         let in_tokens = llama_tokenize(&prompt).await?.len();
 
-        let mut stop = vec![String::from("<|im_end|>")];
+        let mut stop = vec![
+            String::from("<|im_end|>"),
+            String::from("Clyde:"),
+            String::from("Clyde (attachment):"),
+            String::from("Clyde (embed):"),
+        ];
 
         stop.extend(users.values().map(|(u, _)| format!("{u}:")));
+        stop.extend(users.values().map(|(u, _)| format!("{u} (attachment):")));
+        stop.extend(users.values().map(|(u, _)| format!("{u} (embed):")));
+
+        let image_data = self
+            .url_cache
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(id, value)| LlamaImageData {
+                id: *id,
+                data: value.clone(),
+            })
+            .collect::<Vec<_>>();
 
         let LlamaResult {
             content,
-            model,
             duration,
             stop_reason,
         } = llama_completion(LlamaRequest {
-            //image_data,
-            image_data: vec![],
+            image_data,
             max_new_tokens: 2048,
             n_predict: 2048,
             prompt,
@@ -333,7 +382,7 @@ impl Clyde {
                 let embed = EmbedBuilder::new()
                     .color(0x5865f2)
                     .footer(EmbedFooterBuilder::new(format!(
-                        "model {model} | duration {duration:.2?} | temperature 0.2 | top_k 50 | top_p 0.95 | repeat_penalty 1.2 | in_tokens {in_tokens} | out_tokens {out_tokens} | stop {stop_reason}",
+                        "TheBloke/OpenHermes-2.5-Mistral-7B-GGUF | CLIP openai/clip-vit-large-patch14-336 | Took {duration:.2?} | Temperature 0.2 | Top K 50 | Top P 0.95 | Repeat penalty 1.2 | Input tokens {in_tokens} | Inferred tokens {out_tokens} | Stop reason {stop_reason}",
                     )))
                     .build();
 
@@ -346,25 +395,22 @@ impl Clyde {
         Ok(())
     }
 
-    pub async fn process_url(
-        &mut self,
-        attachment_id: Id<AttachmentMarker>,
-        url: &str,
-    ) -> anyhow::Result<()> {
-        let hash_map::Entry::Vacant(entry) = self.url_cache.entry(attachment_id) else {
-            debug!("Skipped `{url}`, already processed.");
+    pub async fn url(&self, url: &str) -> anyhow::Result<(u16, String)> {
+        let mut hasher = DefaultHasher::new();
 
-            return Ok(());
-        };
+        url.hash(&mut hasher);
 
-        debug!("Download `{url}`");
+        let id = (hasher.finish() % u16::MAX as u64) as u16;
 
-        let bytes = reqwest::get(url).await?.bytes().await?;
-        let base64 = process_image(&bytes)?;
+        match self.url_cache.lock().unwrap().entry(id) {
+            hash_map::Entry::Occupied(entry) => Ok((id, entry.get().clone())),
+            hash_map::Entry::Vacant(entry) => {
+                let bytes = reqwest::get(url).await?.bytes().await?;
+                let base64 = process_image(&bytes)?;
 
-        entry.insert(base64);
-
-        Ok(())
+                Ok((id, entry.insert(base64).clone()))
+            }
+        }
     }
 
     pub async fn run(mut self) -> anyhow::Result<()> {
@@ -430,7 +476,6 @@ async fn llama_completion(request: LlamaRequest) -> anyhow::Result<LlamaResult> 
 
     Ok(LlamaResult {
         content: response.content.trim().into(),
-        model: response.model.file_name().unwrap().to_string_lossy().into(),
         duration,
         stop_reason: if response.stopped_eos {
             "eos".into()
@@ -454,9 +499,9 @@ fn process_image(bytes: &[u8]) -> anyhow::Result<String> {
 
     let image = image::load_from_memory(&bytes)?;
 
-    /*debug!("Resize to 512x512");
+    debug!("Resize to 256x256");
 
-    let mut image = image.resize(512, 512, imageops::Triangle);*/
+    let image = image.resize(256, 256, imageops::Triangle);
 
     debug!("Ensure 8-bit RGBA");
 
