@@ -17,6 +17,7 @@ extern "C" {
         path: *const ffi::c_char,
         options: *const ffi::c_void,
     ) -> *mut ffi::c_void;
-    pub fn bindings_model_options_drop(oprions: *mut ffi::c_void);
+    pub fn bindings_model_options_drop(options: *mut ffi::c_void);
     pub fn bindings_model_options_new() -> *mut ffi::c_void;
+    pub fn bindings_session_drop(options: *mut ffi::c_void);
 }

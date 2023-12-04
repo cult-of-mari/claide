@@ -1,6 +1,6 @@
 use {
     crate::owned_ptr::OwnedPtr,
-    std::{ffi::CString, path::Path},
+    std::{ffi::CString, marker::PhantomData, path::Path},
     thiserror::Error,
 };
 
@@ -21,6 +21,11 @@ pub struct ModelOptions {
 
 pub struct Model {
     ptr: OwnedPtr,
+}
+
+pub struct Session<'a> {
+    ptr: OwnedPtr,
+    model: PhantomData<&'a Model>,
 }
 
 impl ModelOptions {
@@ -56,6 +61,20 @@ impl ModelOptions {
         }
 
         inner(self, path.as_ref())
+    }
+
+    pub fn new_session(&mut self) -> Session<'_> {
+        let ptr = unsafe {
+            OwnedPtr::new(
+                sys::bindings_model_new_session(self.ptr.as_ptr(), options),
+                sys::bindings_session_drop,
+            )
+        };
+
+        Session {
+            ptr,
+            model: PhantomData,
+        }
     }
 }
 

@@ -6,11 +6,11 @@ extern "C" void *bindings_clip_model_open(const char *path, int verbosity_level)
 }
 
 extern "C" void bindings_init(bool numa_aware) {
-    return llama_backend_init(numa_aware);
+    llama_backend_init(numa_aware);
 }
 
 extern "C" void bindings_model_drop(void *model) {
-    return llama_free_model(static_cast<llama_model *>(model));
+    llama_free_model(static_cast<llama_model *>(model));
 }
 
 extern "C" void *bindings_model_new_session(void *model, const void *options) {
@@ -25,6 +25,20 @@ extern "C" void *bindings_model_options_new() {
     return static_cast<void *>(new llama_model_params(llama_model_default_params()));
 }
 
-extern "C" void bindings_model_options_drop(void *model_options) {
-    delete static_cast<llama_model_params *>(model_options);
+extern "C" int32_t bindings_model_options_gpu_layers(const void *options) {
+    return static_cast<const llama_model_params *>(options)->n_gpu_layers;
+}
+
+extern "C" int32_t bindings_model_options_set_gpu_layers(void *options, int32_t value) {
+    static_cast<llama_model_params *>(options)->n_gpu_layers = value;
+}
+
+extern "C" void bindings_model_options_drop(void *options) {
+    delete static_cast<llama_model_params *>(options);
+}
+
+extern "C" void bindings_session_drop(void *session) {
+    llama_context *context = static_cast<llama_context *>(session);
+
+    (context);
 }
