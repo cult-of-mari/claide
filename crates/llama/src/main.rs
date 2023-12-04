@@ -59,10 +59,20 @@ impl ModelOptions {
     }
 }
 
+impl Default for ModelOptions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn init(numa_aware: bool) {
     unsafe {
         sys::bindings_init(numa_aware);
     }
 }
 
-fn main() {}
+fn main() {
+    ModelOptions::new()
+        .open("../models/teknium_openhermes-2.5-mistral-7b.gguf")
+        .unwrap();
+}
