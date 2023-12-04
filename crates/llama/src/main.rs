@@ -72,6 +72,8 @@ pub fn init(numa_aware: bool) {
 }
 
 fn main() {
+    init(false);
+
     ModelOptions::new()
         .open("../models/teknium_openhermes-2.5-mistral-7b.gguf")
         .unwrap();

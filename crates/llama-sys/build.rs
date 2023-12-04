@@ -4,15 +4,23 @@ fn main() {
     let mut c = cc::Build::new();
     let mut cxx = cc::Build::new();
 
-    c.file("../../subprojects/llama.cpp/ggml-alloc.c")
+    c.define("_GNU_SOURCE", "1")
+        .define("_XOPEN_SOURCE", "600")
+        .file("../../subprojects/llama.cpp/ggml-alloc.c")
         .file("../../subprojects/llama.cpp/ggml-backend.c")
-        .file("../../subprojects/llama.cpp/ggml.c")
         .file("../../subprojects/llama.cpp/ggml-quants.c")
+        .file("../../subprojects/llama.cpp/ggml.c")
+        .flag("-Wno-unused-function")
+        .flag("-pthread")
         .include("../../subprojects/llama.cpp");
 
     cxx.cpp(true)
-        .file("src/bindings.cpp")
+        .define("_GNU_SOURCE", "1")
+        .define("_XOPEN_SOURCE", "600")
         .file("../../subprojects/llama.cpp/llama.cpp")
+        .file("src/bindings.cpp")
+        .flag("-Wno-unused-function")
+        .flag("-pthread")
         .include("../../subprojects/llama.cpp")
         .include("../../subprojects/llama.cpp/common")
         .include("../../subprojects/llama.cpp/examples/llava");
