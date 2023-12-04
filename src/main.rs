@@ -170,6 +170,7 @@ impl Clyde {
         }
 
         let mut users = BTreeMap::new();
+        let mut image_limit = 1;
         let mut message_list = Vec::new();
 
         for message_id in channel_messages.iter().copied().rev() {
@@ -196,7 +197,10 @@ impl Clyde {
 
                     match self.url(&avatar_url).await {
                         Ok((image_id, _image_data)) => {
-                            write!(author_information, " (Avatar [img-{image_id}])")?;
+                            if image_limit > 0 {
+                                image_limit -= 1;
+                                write!(author_information, " (Avatar [img-{image_id}])")?;
+                            }
                         }
                         Err(error) => warn!("{avatar_url}: {error}"),
                     }
@@ -218,10 +222,15 @@ impl Clyde {
                             let attachment_url = attachment.url.as_str();
 
                             match self.url(attachment_url).await {
-                                Ok((image_id, _image_data)) => write!(
-                                    message_information,
-                                    "{author_name} (attachment): [img-{image_id}]"
-                                )?,
+                                Ok((image_id, _image_data)) => {
+                                    if image_limit > 0 {
+                                        image_limit -= 1;
+                                        write!(
+                                            message_information,
+                                            "{author_name} (attachment): [img-{image_id}]"
+                                        )?
+                                    }
+                                }
                                 Err(error) => warn!("{attachment_url}: {error}"),
                             }
                         }
