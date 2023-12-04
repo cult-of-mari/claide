@@ -6,3 +6,8 @@ edition = "2021"
 [dependencies]
 llama-sys = { version = "0.0.0", path = "../llama-sys", default-features = false }
 thiserror = { version = "1.0.50", default-features = false }
+
+[features]
+clblast = ["llama-sys/clblast"]
+cublas = ["llama-sys/cublas"]
+hipblas = ["llama-sys/hipblas"]

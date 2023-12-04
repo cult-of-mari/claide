@@ -17,12 +17,14 @@ fn main() {
         .include("../../subprojects/llama.cpp/common")
         .include("../../subprojects/llama.cpp/examples/llava");
 
-    if env::var_os("CARGO_FEATURE_CUBLAS").is_some() {
-        println!("cargo:rustc-link-lib=cublas");
-    } else if env::var_os("CARGO_FEATURE_CLBLAST").is_some() {
+    if env::var_os("CARGO_FEATURE_CLBLAST").is_some() {
         println!("cargo:rustc-link-lib=clblast");
+        println!("cargo:rustc-link-lib=OpenCL");
 
-        cxx.file("../../subprojects/llama.cpp/ggml-opencl.cpp");
+        cxx.define("GGML_USE_CLBLAST", "1")
+            .file("../../subprojects/llama.cpp/ggml-opencl.cpp");
+    } else if env::var_os("CARGO_FEATURE_CUBLAS").is_some() {
+        println!("cargo:rustc-link-lib=cublas");
     } else if env::var_os("CARGO_FEATURE_HIPBLAST").is_some() {
         println!("cargo:rustc-link-lib=hipblast");
     }
