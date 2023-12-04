@@ -18,18 +18,13 @@ use {
     twilight_gateway::{Event, Intents, ShardId},
     twilight_model::{
         channel::{message::MessageType, Message},
-        id::{
-            marker::{ChannelMarker, UserMarker},
-            Id,
-        },
+        id::{marker::ChannelMarker, Id},
     },
     twilight_util::builder::embed::{EmbedBuilder, EmbedFooterBuilder},
 };
 
 pub mod discord;
 pub mod prompt;
-
-pub const CLYDE_ID: Id<UserMarker> = Id::new(1116684158199144468);
 
 pub struct Clyde {
     cache: InMemoryCache,
@@ -89,7 +84,15 @@ impl Clyde {
     pub fn new(token: String) -> Self {
         Self {
             cache: InMemoryCache::builder().message_cache_size(50).build(),
-            gateway: twilight_gateway::Shard::new(ShardId::ONE, token.clone(), Intents::all()),
+            gateway: twilight_gateway::Shard::new(
+                ShardId::ONE,
+                token.clone(),
+                Intents::GUILDS
+                    | Intents::GUILD_MEMBERS
+                    | Intents::GUILD_MESSAGES
+                    | Intents::DIRECT_MESSAGES
+                    | Intents::MESSAGE_CONTENT,
+            ),
             rest: twilight_http::Client::new(token),
             url_cache: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -102,8 +105,14 @@ impl Clyde {
     }
 
     pub async fn process_message(&mut self, message: &Message) -> anyhow::Result<()> {
-        if message.author.id == CLYDE_ID {
-            debug!("Ignored self message");
+        let Some(clyde_user) = self.cache.current_user() else {
+            warn!("Current user not cached");
+
+            return Ok(());
+        };
+
+        if message.author.bot {
+            debug!("Ignored bot message");
 
             return Ok(());
         }
@@ -125,14 +134,15 @@ impl Clyde {
         if !(message
             .mentions
             .iter()
-            .any(|mention| mention.id == CLYDE_ID)
+            .any(|mention| mention.id == clyde_user.id)
             || message
                 .referenced_message
                 .as_ref()
-                .is_some_and(|message| message.author.id == CLYDE_ID)
+                .is_some_and(|message| message.author.id == clyde_user.id)
             || matches!(
                 message.kind,
-                |MessageType::UserJoin| MessageType::GuildBoost
+                MessageType::UserJoin
+                    | MessageType::GuildBoost
                     | MessageType::GuildBoostTier1
                     | MessageType::GuildBoostTier2
                     | MessageType::GuildBoostTier3
@@ -150,11 +160,7 @@ impl Clyde {
             return Ok(());
         };
 
-        let Some(channel_name) = channel.name.as_deref() else {
-            debug!("Ignored channel without a name");
-
-            return Ok(());
-        };
+        let channel_name = channel.name.as_deref().unwrap_or("unnamed");
 
         let Some(channel_messages) = self.cache.channel_messages(channel_id) else {
             debug!("Ignored channel without any messages");
@@ -179,16 +185,17 @@ impl Clyde {
 
             let author_id = message.author();
 
-            let Some(author) = self.cache.user(author_id) else {
-                continue;
+            let (author_name, author_avatar) = {
+                match self.cache.user(author_id) {
+                    Some(author) => (author.name.clone(), author.avatar),
+                    None => ("unknown".to_owned(), None),
+                }
             };
-
-            let author_name = author.name.as_str();
 
             if let btree_map::Entry::Vacant(entry) = users.entry(author_id) {
                 let mut author_information = format!("{author_name} (<@{author_id}>)");
 
-                if let Some(avatar_hash) = author.avatar.as_ref() {
+                if let Some(avatar_hash) = author_avatar {
                     let user_id = author_id;
                     let avatar_url = format!(
                         "https://cdn.discordapp.com/avatars/{user_id}/{avatar_hash}.webp?size=320"
@@ -202,14 +209,14 @@ impl Clyde {
                     }
                 }
 
-                entry.insert((String::from(author_name), author_information));
+                entry.insert((author_name.clone(), author_information));
             }
 
             match message.kind() {
                 MessageType::Regular | MessageType::Reply => {
                     let content = message.content();
 
-                    if author_id == CLYDE_ID {
+                    if author_id == clyde_user.id {
                         message_list.push(format!("assistant\n{content}"));
                     } else {
                         let mut message_information = format!("user\n{author_name}: {content}\n");
@@ -293,8 +300,7 @@ impl Clyde {
         let message_list = message_list.join("<|im_end|>\n<|im_start|>");
         let mut message_list = String::from(message_list.trim());
 
-        message_list.insert_str(0, "<|im_start|>");
-        message_list.push_str("<|im_end|>");
+        message_list = format!("<|im_start|>{message_list}<|im_end|>");
 
         let mut prompt = format!("<|im_start|>system\n{system_prompt}\n{channel_information}\nUsers in this channel:{user_information}<|im_end|>\nConversation:\n");
         info!("system_prompt = {prompt}");
@@ -362,7 +368,7 @@ impl Clyde {
         let content = content.chars().collect::<Vec<_>>();
         let mut iter = content
             .chunks(1950)
-            .map(|chunk| chunk.into_iter().collect::<String>())
+            .map(|chunk| chunk.iter().collect::<String>())
             .map(|mut content| {
                 if content.matches("```").count() % 2 == 1 {
                     content.push_str("```");
@@ -497,7 +503,7 @@ async fn llama_completion(request: LlamaRequest) -> anyhow::Result<LlamaResult> 
 fn process_image(bytes: &[u8]) -> anyhow::Result<String> {
     debug!("Attempt to parse {} bytes as an image", bytes.len());
 
-    let image = image::load_from_memory(&bytes)?;
+    let image = image::load_from_memory(bytes)?;
 
     debug!("Resize to 256x256");
 
