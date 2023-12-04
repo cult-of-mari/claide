@@ -9,7 +9,6 @@ extern "C" void bindings_init(bool numa_aware) {
     return llama_backend_init(numa_aware);
 }
 
-
 extern "C" void bindings_model_drop(void *model) {
     return llama_free_model(static_cast<llama_model *>(model));
 }

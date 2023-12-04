@@ -1,10 +1,6 @@
 use {
     crate::owned_ptr::OwnedPtr,
-    std::{
-        ffi::{self, CString},
-        path::Path,
-        ptr::NonNull,
-    },
+    std::{ffi::CString, path::Path},
     thiserror::Error,
 };
 
