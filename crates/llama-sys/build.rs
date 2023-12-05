@@ -18,6 +18,7 @@ fn main() {
     cxx.cpp(true)
         .define("_GNU_SOURCE", "1")
         .define("_XOPEN_SOURCE", "600")
+        .file("../../subprojects/llama.cpp/examples/llava/clip.cpp")
         .file("../../subprojects/llama.cpp/llama.cpp")
         .file("src/bindings.cpp")
         .flag("-Wno-unused")
