@@ -75,6 +75,8 @@ fn main() {
 
     cxx.cpp(true)
         .file("src/bindings.cpp")
+        .file(source!("common/grammar-parser.cpp"))
+        .file(source!("common/sampling.cpp"))
         .file(source!("examples/llava/clip.cpp"))
         .file(source!("llama.cpp"))
         .include(source!("common"))
