@@ -6,6 +6,7 @@ use {
         fmt,
         mem::MaybeUninit,
         path::Path,
+        ptr,
     },
 };
 
@@ -63,14 +64,14 @@ impl Model {
         unsafe { sys::bindings_model_eot_token(self.model_ptr.as_ptr()) }
     }
 
-    pub unsafe fn tokenize_internal(
+    unsafe fn tokenize_internal(
         &self,
         string: &str,
         tokens: &mut [MaybeUninit<i32>],
         add_bos: bool,
         special: bool,
-    ) -> Result<u32, u32> {
-        let tokens_len = sys::bindings_model_tokenize(
+    ) -> Result<usize, usize> {
+        let len = sys::bindings_model_tokenize(
             self.model_ptr.as_ptr(),
             string.as_ptr().cast(),
             string.len().try_into().unwrap(),
@@ -80,10 +81,31 @@ impl Model {
             special,
         );
 
-        if tokens_len < -1 {
-            Ok(tokens_len.unsigned_abs())
+        let is_ok = len > -1;
+        let len = len.unsigned_abs().try_into().unwrap();
+
+        if is_ok {
+            Ok(len)
         } else {
-            Err(tokens_len.unsigned_abs())
+            Err(len)
+        }
+    }
+
+    pub fn tokenize(&self, string: &str, tokens: &mut Vec<i32>, add_bos: bool, special: bool) {
+        tokens.clear();
+
+        unsafe {
+            match self.tokenize_internal(string, tokens.spare_capacity_mut(), add_bos, special) {
+                Ok(len) => tokens.set_len(len),
+                Err(len) => {
+                    tokens.reserve(len - tokens.len());
+
+                    self.tokenize_internal(string, tokens.spare_capacity_mut(), add_bos, special)
+                        .unwrap();
+
+                    tokens.set_len(tokens.len());
+                }
+            }
         }
     }
 
@@ -92,17 +114,20 @@ impl Model {
         token: i32,
         bytes: &mut [MaybeUninit<u8>],
     ) -> Result<u32, u32> {
-        let bytes_len = sys::bindings_model_detokenize(
+        let len = sys::bindings_model_detokenize(
             self.model_ptr.as_ptr(),
             token,
             bytes.as_mut_ptr().cast(),
             bytes.len().try_into().unwrap(),
         );
 
-        if bytes_len < -1 {
-            Ok(bytes_len.unsigned_abs())
+        let is_ok = len > -1;
+        let len = len.unsigned_abs();
+
+        if is_ok {
+            Ok(len)
         } else {
-            Err(bytes_len.unsigned_abs())
+            Err(len)
         }
     }
 }

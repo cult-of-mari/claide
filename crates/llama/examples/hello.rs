@@ -9,10 +9,10 @@ fn main() {
 
     println!("{options:#?}");
 
-    let clip_model =
+    /*let clip_model =
         ClipModel::open("../models/openai_clip-vit-large-patch14-336.gguf", 1).unwrap();
 
-    println!("{clip_model:?}");
+    println!("{clip_model:?}");*/
 
     let model = options
         .open("../models/teknium_openhermes-2.5-mistral-7b.gguf")
@@ -23,4 +23,12 @@ fn main() {
     let session = SessionOptions::new().with_model(model);
 
     println!("{session:?}");
+
+    let mut tokens = Vec::new();
+
+    session
+        .model()
+        .tokenize("hi clyde", &mut tokens, false, false);
+
+    println!("{tokens:?}");
 }
