@@ -23,6 +23,10 @@ pub struct Model {
     ptr: OwnedPtr,
 }
 
+pub struct SessionOptions {
+    ptr: OwnedPtr,
+}
+
 pub struct Session<'a> {
     ptr: OwnedPtr,
     model: PhantomData<&'a Model>,
@@ -40,6 +44,15 @@ impl ModelOptions {
         Self {
             ptr,
             verbosity_level: 1,
+        }
+    }
+
+    pub fn gpu_layers(&mut self, layers: u8) {
+        unsafe {
+            sys::bindings_model_options_set_gpu_layers(
+                self.ptr.as_mut_ptr(),
+                layers.try_into().unwrap(),
+            )
         }
     }
 
@@ -62,11 +75,24 @@ impl ModelOptions {
 
         inner(self, path.as_ref())
     }
+}
 
-    pub fn new_session(&mut self) -> Session<'_> {
+impl SessionOptions {
+    pub fn new() -> Self {
         let ptr = unsafe {
             OwnedPtr::new(
-                sys::bindings_model_new_session(self.ptr.as_ptr(), options),
+                sys::bindings_session_options_new(),
+                sys::bindings_session_options_drop,
+            )
+        };
+
+        Self { ptr }
+    }
+
+    pub fn with_model(self, model: &mut Model) -> Session<'_> {
+        let ptr = unsafe {
+            OwnedPtr::new(
+                sys::bindings_model_new_session(self.ptr.as_ptr(), self.ptr.as_ptr()),
                 sys::bindings_session_drop,
             )
         };
@@ -93,7 +119,9 @@ pub fn init(numa_aware: bool) {
 fn main() {
     init(false);
 
-    ModelOptions::new()
+    let mut model = ModelOptions::new()
         .open("../models/teknium_openhermes-2.5-mistral-7b.gguf")
         .unwrap();
+
+    let mut session = SessionOptions::new().with_model(&mut model);
 }

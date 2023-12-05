@@ -18,6 +18,10 @@ extern "C" {
         options: *const ffi::c_void,
     ) -> *mut ffi::c_void;
     pub fn bindings_model_options_drop(options: *mut ffi::c_void);
+    pub fn bindings_model_options_gpu_layers(options: *const ffi::c_void) -> i32;
+    pub fn bindings_model_options_set_gpu_layers(options: *mut ffi::c_void, value: i32);
     pub fn bindings_model_options_new() -> *mut ffi::c_void;
     pub fn bindings_session_drop(options: *mut ffi::c_void);
+    pub fn bindings_session_options_new() -> *mut ffi::c_void;
+    pub fn bindings_session_options_drop(options: *mut ffi::c_void);
 }

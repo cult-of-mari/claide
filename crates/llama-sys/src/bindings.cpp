@@ -29,7 +29,7 @@ extern "C" int32_t bindings_model_options_gpu_layers(const void *options) {
     return static_cast<const llama_model_params *>(options)->n_gpu_layers;
 }
 
-extern "C" int32_t bindings_model_options_set_gpu_layers(void *options, int32_t value) {
+extern "C" void bindings_model_options_set_gpu_layers(void *options, int32_t value) {
     static_cast<llama_model_params *>(options)->n_gpu_layers = value;
 }
 
@@ -37,8 +37,14 @@ extern "C" void bindings_model_options_drop(void *options) {
     delete static_cast<llama_model_params *>(options);
 }
 
-extern "C" void bindings_session_drop(void *session) {
-    llama_context *context = static_cast<llama_context *>(session);
+extern "C" void *bindings_session_options_new() {
+    return static_cast<void *>(new llama_context_params(llama_context_default_params()));
+}
 
-    (context);
+extern "C" void bindings_session_options_drop(void *options) {
+    delete static_cast<llama_context_params *>(options);
+}
+
+extern "C" void bindings_session_drop(void *session) {
+    static_cast<llama_context *>(session);
 }

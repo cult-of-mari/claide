@@ -10,6 +10,7 @@ fn main() {
         .file("../../subprojects/llama.cpp/ggml-backend.c")
         .file("../../subprojects/llama.cpp/ggml-quants.c")
         .file("../../subprojects/llama.cpp/ggml.c")
+        .flag("-Wno-unused")
         .flag("-Wno-unused-function")
         .flag("-pthread")
         .include("../../subprojects/llama.cpp");
@@ -19,6 +20,7 @@ fn main() {
         .define("_XOPEN_SOURCE", "600")
         .file("../../subprojects/llama.cpp/llama.cpp")
         .file("src/bindings.cpp")
+        .flag("-Wno-unused")
         .flag("-Wno-unused-function")
         .flag("-pthread")
         .include("../../subprojects/llama.cpp")
