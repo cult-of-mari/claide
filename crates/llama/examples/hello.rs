@@ -31,4 +31,10 @@ fn main() {
         .tokenize("hi clyde", &mut tokens, false, false);
 
     println!("{tokens:?}");
+
+    let mut string = String::new();
+
+    session.model().detokenize(&tokens, &mut string);
+
+    println!("{string:?}");
 }

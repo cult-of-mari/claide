@@ -1,4 +1,4 @@
-se {
+use {
     crate::{owned_ptr::OwnedPtr, sys, Error},
     std::{
         any,
@@ -110,10 +110,10 @@ impl Model {
     }
 
     pub unsafe fn detokenize_internal(
-        &mut self,
+        &self,
         token: i32,
         bytes: &mut [MaybeUninit<u8>],
-    ) -> Result<u32, u32> {
+    ) -> Result<usize, usize> {
         let len = sys::bindings_model_detokenize(
             self.model_ptr.as_ptr(),
             token,
@@ -122,12 +122,34 @@ impl Model {
         );
 
         let is_ok = len > -1;
-        let len = len.unsigned_abs();
+        let len = len.unsigned_abs().try_into().unwrap();
 
         if is_ok {
             Ok(len)
         } else {
             Err(len)
+        }
+    }
+
+    pub fn detokenize(&self, tokens: &[i32], string: &mut String) {
+        string.clear();
+
+        unsafe {
+            let bytes = string.as_mut_vec();
+
+            for token in tokens.iter().copied() {
+                match self.detokenize_internal(token, bytes.spare_capacity_mut()) {
+                    Ok(len) => bytes.set_len(bytes.len() + len),
+                    Err(len) => {
+                        bytes.reserve(len);
+
+                        self.detokenize_internal(token, bytes.spare_capacity_mut())
+                            .unwrap();
+
+                        bytes.set_len(bytes.len() + len);
+                    }
+                }
+            }
         }
     }
 }
