@@ -1,4 +1,4 @@
-use {
+se {
     crate::{owned_ptr::OwnedPtr, sys, Error},
     std::{
         any,
@@ -103,7 +103,7 @@ impl Model {
                     self.tokenize_internal(string, tokens.spare_capacity_mut(), add_bos, special)
                         .unwrap();
 
-                    tokens.set_len(tokens.len());
+                    tokens.set_len(len);
                 }
             }
         }
