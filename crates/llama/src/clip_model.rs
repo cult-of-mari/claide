@@ -4,10 +4,8 @@ use {
         any,
         ffi::{self, CString},
         fmt,
-        marker::PhantomData,
         path::Path,
     },
-    thiserror::Error,
 };
 
 pub struct ClipModel {

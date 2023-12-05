@@ -22,9 +22,13 @@ extern "C" {
     pub fn bindings_model_drop(model: *mut ffi::c_void);
 
     pub fn bindings_model_options_new() -> *mut ffi::c_void;
+    pub fn bindings_model_options_gpu_layers(options: *const ffi::c_void) -> u16;
+    pub fn bindings_model_options_set_gpu_layers(options: *mut ffi::c_void, value: u16);
+    pub fn bindings_model_options_use_mlock(options: *const ffi::c_void) -> bool;
+    pub fn bindings_model_options_set_use_mlock(options: *mut ffi::c_void, value: bool);
+    pub fn bindings_model_options_use_mmap(options: *const ffi::c_void) -> bool;
+    pub fn bindings_model_options_set_use_mmap(options: *mut ffi::c_void, value: bool);
     pub fn bindings_model_options_drop(options: *mut ffi::c_void);
-    pub fn bindings_model_options_gpu_layers(options: *const ffi::c_void) -> i32;
-    pub fn bindings_model_options_set_gpu_layers(options: *mut ffi::c_void, value: i32);
 
     pub fn bindings_session_options_new() -> *mut ffi::c_void;
     pub fn bindings_session_options_drop(options: *mut ffi::c_void);

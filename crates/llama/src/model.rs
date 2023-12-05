@@ -47,13 +47,32 @@ impl ModelOptions {
         self.ptr.as_mut_ptr()
     }
 
-    pub fn gpu_layers(&mut self, layers: u8) -> &mut Self {
-        unsafe {
-            sys::bindings_model_options_set_gpu_layers(
-                self.ptr.as_mut_ptr(),
-                layers.try_into().unwrap(),
-            )
-        }
+    pub fn gpu_layers(&self) -> u16 {
+        unsafe { sys::bindings_model_options_gpu_layers(self.as_ptr()) }
+    }
+
+    pub fn set_gpu_layers(&mut self, layers: u16) -> &mut Self {
+        unsafe { sys::bindings_model_options_set_gpu_layers(self.as_mut_ptr(), layers) }
+
+        self
+    }
+
+    pub fn use_mlock(&self) -> bool {
+        unsafe { sys::bindings_model_options_use_mlock(self.as_ptr()) }
+    }
+
+    pub fn set_use_mlock(&mut self, mlock: bool) -> &mut Self {
+        unsafe { sys::bindings_model_options_set_use_mlock(self.as_mut_ptr(), mlock) }
+
+        self
+    }
+
+    pub fn use_mmap(&self) -> bool {
+        unsafe { sys::bindings_model_options_use_mmap(self.as_ptr()) }
+    }
+
+    pub fn set_use_mmap(&mut self, mmap: bool) -> &mut Self {
+        unsafe { sys::bindings_model_options_set_use_mlock(self.as_mut_ptr(), mmap) }
 
         self
     }
@@ -89,6 +108,9 @@ impl Default for ModelOptions {
 impl fmt::Debug for ModelOptions {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct(any::type_name::<Self>())
+            .field("gpu_layers", &self.gpu_layers())
+            .field("use_mlock", &self.use_mlock())
+            .field("use_mmap", &self.use_mmap())
             .finish_non_exhaustive()
     }
 }
