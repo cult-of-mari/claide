@@ -14,13 +14,13 @@ fn main() {
 
     println!("{clip_model:?}");
 
-    let mut model = options
+    let model = options
         .open("../models/teknium_openhermes-2.5-mistral-7b.gguf")
         .unwrap();
 
     println!("{model:?}");
 
-    let session = SessionOptions::new().with_model(&mut model);
+    let session = SessionOptions::new().with_model(model);
 
     println!("{session:?}");
 }

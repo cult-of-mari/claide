@@ -1,13 +1,13 @@
 use {
     crate::{owned_ptr::OwnedPtr, sys, Model},
-    std::{any, fmt, marker::PhantomData},
+    std::{any, fmt},
 };
 
 /// An inference session.
-pub struct Session<'a> {
+pub struct Session {
     pub(crate) session_ptr: OwnedPtr,
     pub(crate) sampling_ptr: OwnedPtr,
-    _model_phantom: PhantomData<&'a Model>,
+    model: Model,
 }
 
 /// Options and flags which can be used to configure how a session is created.
@@ -16,7 +16,15 @@ pub struct SessionOptions {
     pub(crate) sampling_options_ptr: OwnedPtr,
 }
 
-impl<'a> Session<'a> {}
+impl Session {
+    pub fn model(&self) -> &Model {
+        &self.model
+    }
+
+    pub fn into_model(self) -> Model {
+        self.model
+    }
+}
 
 impl SessionOptions {
     /// Creates a new set of session options ready for configuration.
@@ -36,7 +44,7 @@ impl SessionOptions {
     }
 
     /// Creates a session with the specified model.
-    pub fn with_model(mut self, model: &mut Model) -> Session<'_> {
+    pub fn with_model(mut self, mut model: Model) -> Session {
         unsafe {
             Session {
                 session_ptr: OwnedPtr::new(
@@ -50,7 +58,7 @@ impl SessionOptions {
                     sys::bindings_session_sampling_new(self.sampling_options_ptr.as_mut_ptr()),
                     sys::bindings_session_sampling_drop,
                 ),
-                _model_phantom: PhantomData,
+                model,
             }
         }
     }
@@ -69,7 +77,7 @@ impl fmt::Debug for SessionOptions {
     }
 }
 
-impl<'a> fmt::Debug for Session<'a> {
+impl fmt::Debug for Session {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct(any::type_name::<Self>())
             .finish_non_exhaustive()

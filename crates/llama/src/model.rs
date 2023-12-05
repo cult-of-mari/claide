@@ -107,14 +107,6 @@ impl Model {
     }
 }
 
-fn int_to_requirement(token: ffi::c_int) -> Option<bool> {
-    match token {
-        1 => Some(true),
-        0 => Some(false),
-        _ => None,
-    }
-}
-
 impl ModelOptions {
     pub fn new() -> Self {
         unsafe {
@@ -200,5 +192,13 @@ impl fmt::Debug for Model {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct(any::type_name::<Self>())
             .finish_non_exhaustive()
+    }
+}
+
+fn int_to_requirement(token: ffi::c_int) -> Option<bool> {
+    match token {
+        1 => Some(true),
+        0 => Some(false),
+        _ => None,
     }
 }

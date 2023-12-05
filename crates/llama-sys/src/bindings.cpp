@@ -149,7 +149,7 @@ extern "C" int bindings_session_decode(void *session, void *batch) {
 }
 
 extern "C" void bindings_session_drop(void *session) {
-  static_cast<llama_context *>(session);
+  llama_free(static_cast<llama_context *>(session));
 }
 
 // Session options
