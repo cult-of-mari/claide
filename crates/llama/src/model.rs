@@ -2,8 +2,9 @@ use {
     crate::{owned_ptr::OwnedPtr, sys, Error},
     std::{
         any,
-        ffi::{CString},
+        ffi::{self, CString},
         fmt,
+        mem::MaybeUninit,
         path::Path,
     },
 };
@@ -15,6 +16,103 @@ pub struct ModelOptions {
 
 pub struct Model {
     pub(crate) model_ptr: OwnedPtr,
+}
+
+impl Model {
+    pub fn bos_token(&self) -> i32 {
+        unsafe { sys::bindings_model_bos_token(self.model_ptr.as_ptr()) }
+    }
+
+    pub fn eos_token(&self) -> i32 {
+        unsafe { sys::bindings_model_eos_token(self.model_ptr.as_ptr()) }
+    }
+
+    pub fn nl_token(&self) -> i32 {
+        unsafe { sys::bindings_model_nl_token(self.model_ptr.as_ptr()) }
+    }
+
+    pub fn requires_bos_token(&self) -> Option<bool> {
+        unsafe {
+            int_to_requirement(sys::bindings_model_requires_bos_token(
+                self.model_ptr.as_ptr(),
+            ))
+        }
+    }
+
+    pub fn requires_eos_token(&self) -> Option<bool> {
+        unsafe {
+            int_to_requirement(sys::bindings_model_requires_eos_token(
+                self.model_ptr.as_ptr(),
+            ))
+        }
+    }
+
+    pub fn prefix_token(&self) -> i32 {
+        unsafe { sys::bindings_model_prefix_token(self.model_ptr.as_ptr()) }
+    }
+
+    pub fn middle_token(&self) -> i32 {
+        unsafe { sys::bindings_model_middle_token(self.model_ptr.as_ptr()) }
+    }
+
+    pub fn suffix_token(&self) -> i32 {
+        unsafe { sys::bindings_model_suffix_token(self.model_ptr.as_ptr()) }
+    }
+
+    pub fn eot_token(&self) -> i32 {
+        unsafe { sys::bindings_model_eot_token(self.model_ptr.as_ptr()) }
+    }
+
+    pub unsafe fn tokenize_internal(
+        &self,
+        string: &str,
+        tokens: &mut [MaybeUninit<i32>],
+        add_bos: bool,
+        special: bool,
+    ) -> Result<u32, u32> {
+        let tokens_len = sys::bindings_model_tokenize(
+            self.model_ptr.as_ptr(),
+            string.as_ptr().cast(),
+            string.len().try_into().unwrap(),
+            tokens.as_mut_ptr().cast(),
+            tokens.len().try_into().unwrap(),
+            add_bos,
+            special,
+        );
+
+        if tokens_len < -1 {
+            Ok(tokens_len.unsigned_abs())
+        } else {
+            Err(tokens_len.unsigned_abs())
+        }
+    }
+
+    pub unsafe fn detokenize_internal(
+        &mut self,
+        token: i32,
+        bytes: &mut [MaybeUninit<u8>],
+    ) -> Result<u32, u32> {
+        let bytes_len = sys::bindings_model_detokenize(
+            self.model_ptr.as_ptr(),
+            token,
+            bytes.as_mut_ptr().cast(),
+            bytes.len().try_into().unwrap(),
+        );
+
+        if bytes_len < -1 {
+            Ok(bytes_len.unsigned_abs())
+        } else {
+            Err(bytes_len.unsigned_abs())
+        }
+    }
+}
+
+fn int_to_requirement(token: ffi::c_int) -> Option<bool> {
+    match token {
+        1 => Some(true),
+        0 => Some(false),
+        _ => None,
+    }
 }
 
 impl ModelOptions {

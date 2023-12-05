@@ -2,14 +2,14 @@ use {
     crate::{owned_ptr::OwnedPtr, sys, Error},
     std::{
         any,
-        ffi::{self, CString},
+        ffi::{CString},
         fmt,
         path::Path,
     },
 };
 
 pub struct ClipModel {
-    ptr: OwnedPtr,
+    pub(crate) clip_model_ptr: OwnedPtr,
 }
 
 impl ClipModel {
@@ -26,21 +26,13 @@ impl ClipModel {
                     Err(Error::LoadModel)
                 } else {
                     Ok(ClipModel {
-                        ptr: OwnedPtr::new(ptr, sys::bindings_clip_model_drop),
+                        clip_model_ptr: OwnedPtr::new(ptr, sys::bindings_clip_model_drop),
                     })
                 }
             }
         }
 
         inner(path.as_ref(), verbosity)
-    }
-
-    pub fn as_ptr(&self) -> *const ffi::c_void {
-        self.ptr.as_ptr()
-    }
-
-    pub fn as_mut_ptr(&mut self) -> *mut ffi::c_void {
-        self.ptr.as_mut_ptr()
     }
 }
 
