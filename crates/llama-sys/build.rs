@@ -64,6 +64,8 @@ fn link(name: &str) {
 }
 
 fn main() {
+    println!("cargo:rerun-if-changed=src/bindings.cpp");
+
     let backend = Backend::from_env();
     let mut c = build_common();
     let mut cxx = build_common();
@@ -75,6 +77,7 @@ fn main() {
 
     cxx.cpp(true)
         .file("src/bindings.cpp")
+        .file(source!("common/common.cpp"))
         .file(source!("common/grammar-parser.cpp"))
         .file(source!("common/sampling.cpp"))
         .file(source!("examples/llava/clip.cpp"))

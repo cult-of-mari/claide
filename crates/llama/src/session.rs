@@ -6,23 +6,23 @@ use {
 /// An inference session.
 pub struct Session {
     pub(crate) session_ptr: OwnedPtr,
-    pub(crate) sampling_ptr: OwnedPtr,
+    pub(crate) sampler_ptr: OwnedPtr,
     model: Model,
 }
 
 /// Options and flags which can be used to configure how a session is created.
 pub struct SessionOptions {
     pub(crate) options_ptr: OwnedPtr,
-    pub(crate) sampling_options_ptr: OwnedPtr,
+    pub(crate) sampler_options_ptr: OwnedPtr,
 }
 
 pub(crate) struct SessionBatch {
     pub(crate) batch_ptr: OwnedPtr,
-    pub(crate) capacity: u16,
+    pub(crate) capacity: u32,
 }
 
 impl SessionBatch {
-    pub fn new(token_capacity: u16, embedding_size: u16, max_sequence_ids: u16) -> Self {
+    pub fn new(token_capacity: u32, embedding_size: u32, max_sequence_ids: u32) -> Self {
         unsafe {
             Self {
                 batch_ptr: OwnedPtr::new(
@@ -38,33 +38,9 @@ impl SessionBatch {
         }
     }
 
-    pub fn tokens_len(&self) -> u32 {
-        unsafe { sys::bindings_session_batch_tokens_len(self.batch_ptr.as_ptr()) }
-    }
-
-    pub unsafe fn set_tokens_len(&mut self, new_len: u32) {
-        sys::bindings_session_batch_tokens_set_len(self.batch_ptr.as_mut_ptr(), new_len)
-    }
-
-    pub fn tokens(&self) -> &[i32] {
+    pub fn add_token(&mut self, token: i32, index: u32) {
         unsafe {
-            slice::from_raw_parts(
-                dbg!(sys::bindings_session_batch_tokens_ptr(
-                    self.batch_ptr.as_ptr()
-                )),
-                self.capacity.try_into().unwrap(),
-            )
-        }
-    }
-
-    pub fn tokens_mut(&mut self) -> &mut [i32] {
-        unsafe {
-            slice::from_raw_parts_mut(
-                dbg!(sys::bindings_session_batch_tokens_mut_ptr(
-                    self.batch_ptr.as_mut_ptr()
-                )),
-                self.capacity.try_into().unwrap(),
-            )
+            sys::bindings_session_batch_add_token(self.batch_ptr.as_mut_ptr(), token, index);
         }
     }
 }
@@ -78,12 +54,21 @@ impl Session {
         self.model
     }
 
-    pub fn infer(&mut self, _tokens: &[i32]) {
-        let mut batch = SessionBatch::new(4098, 4096, 4096);
+    pub fn infer(&mut self, tokens: &[i32]) {
+        let mut batch = SessionBatch::new(4096, 0, 4096);
 
-        //println!("{:?}", batch.tokens_len());
-        println!("{:?}", batch.tokens());
-        println!("{:?}", batch.tokens().len());
+        for (index, token) in tokens.iter().copied().enumerate() {
+            batch.add_token(token, index.try_into().unwrap());
+        }
+
+        unsafe {
+            let tokens = sys::bindings_session_decode(
+                self.session_ptr.as_mut_ptr(),
+                batch.batch_ptr.as_mut_ptr(),
+            );
+
+            println!("{tokens:?}");
+        }
     }
 }
 
@@ -96,9 +81,9 @@ impl SessionOptions {
                     sys::bindings_session_options_new(),
                     sys::bindings_session_options_drop,
                 ),
-                sampling_options_ptr: OwnedPtr::new(
-                    sys::bindings_session_sampling_options_new(),
-                    sys::bindings_session_sampling_options_drop,
+                sampler_options_ptr: OwnedPtr::new(
+                    sys::bindings_session_sampler_options_new(),
+                    sys::bindings_session_sampler_options_drop,
                 ),
             }
         }
@@ -115,9 +100,9 @@ impl SessionOptions {
                     ),
                     sys::bindings_session_drop,
                 ),
-                sampling_ptr: OwnedPtr::new(
-                    sys::bindings_session_sampling_new(self.sampling_options_ptr.as_mut_ptr()),
-                    sys::bindings_session_sampling_drop,
+                sampler_ptr: OwnedPtr::new(
+                    sys::bindings_session_sampler_new(self.sampler_options_ptr.as_mut_ptr()),
+                    sys::bindings_session_sampler_drop,
                 ),
                 model,
             }

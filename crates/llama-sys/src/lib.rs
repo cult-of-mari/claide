@@ -50,10 +50,12 @@ extern "C" {
     pub fn bindings_session_batch_embedding_mut_ptr(batch: *mut ffi::c_void) -> *mut f32;
     pub fn bindings_session_batch_embedding_ptr(batch: *const ffi::c_void) -> *const f32;
     pub fn bindings_session_batch_init(
-        token_capacity: u16,
-        embedding_size: u16,
-        max_sequence_ids: u16,
+        token_capacity: u32,
+        embedding_size: u32,
+        max_sequence_ids: u32,
     ) -> *mut ffi::c_void;
+    pub fn bindings_session_batch_clear(batch: *mut ffi::c_void);
+    pub fn bindings_session_batch_add_token(batch: *mut ffi::c_void, token: i32, index: u32);
     pub fn bindings_session_batch_logits_mut_ptr(batch: *mut ffi::c_void) -> *mut *mut i8;
     pub fn bindings_session_batch_logits_ptr(batch: *const ffi::c_void) -> *const *mut i8;
     pub fn bindings_session_batch_pos_mut_ptr(batch: *mut ffi::c_void) -> *mut i32;
@@ -77,15 +79,15 @@ extern "C" {
     ) -> *mut ffi::c_void;
     pub fn bindings_session_options_drop(options: *mut ffi::c_void);
     pub fn bindings_session_options_new() -> *mut ffi::c_void;
-    pub fn bindings_session_sampling_drop(sampling: *mut ffi::c_void);
-    pub fn bindings_session_sampling_new(options: *mut ffi::c_void) -> *mut ffi::c_void;
-    pub fn bindings_session_sampling_options_drop(options: *mut ffi::c_void);
-    pub fn bindings_session_sampling_options_new() -> *mut ffi::c_void;
-    pub fn bindings_session_sampling_options_set_temperature(options: *mut ffi::c_void, value: f32);
-    pub fn bindings_session_sampling_options_set_top_k(options: *mut ffi::c_void, value: f32);
-    pub fn bindings_session_sampling_options_set_top_p(options: *mut ffi::c_void, value: f32);
-    pub fn bindings_session_sampling_options_temperature(options: *const ffi::c_void) -> f32;
-    pub fn bindings_session_sampling_options_top_k(options: *const ffi::c_void) -> f32;
-    pub fn bindings_session_sampling_options_top_p(options: *const ffi::c_void) -> f32;
-    pub fn bindings_session_sampling_reset(sampling: *mut ffi::c_void);
+    pub fn bindings_session_sampler_drop(sampler: *mut ffi::c_void);
+    pub fn bindings_session_sampler_new(options: *mut ffi::c_void) -> *mut ffi::c_void;
+    pub fn bindings_session_sampler_options_drop(options: *mut ffi::c_void);
+    pub fn bindings_session_sampler_options_new() -> *mut ffi::c_void;
+    pub fn bindings_session_sampler_options_set_temperature(options: *mut ffi::c_void, value: f32);
+    pub fn bindings_session_sampler_options_set_top_k(options: *mut ffi::c_void, value: f32);
+    pub fn bindings_session_sampler_options_set_top_p(options: *mut ffi::c_void, value: f32);
+    pub fn bindings_session_sampler_options_temperature(options: *const ffi::c_void) -> f32;
+    pub fn bindings_session_sampler_options_top_k(options: *const ffi::c_void) -> f32;
+    pub fn bindings_session_sampler_options_top_p(options: *const ffi::c_void) -> f32;
+    pub fn bindings_session_sampler_reset(sampler: *mut ffi::c_void);
 }

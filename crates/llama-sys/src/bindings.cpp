@@ -163,54 +163,69 @@ extern "C" void bindings_session_options_drop(void *options) {
 }
 
 // Session sampling
-extern "C" void *bindings_session_sampling_new(const void *options) {
+extern "C" void *bindings_session_sampler_new(const void *options) {
   return static_cast<void *>(llama_sampling_init(
       *static_cast<const llama_sampling_params *>(options)));
 }
 
-extern "C" void bindings_session_sampling_reset(void *sampling) {
-  llama_sampling_reset(static_cast<llama_sampling_context *>(sampling));
+extern "C" void bindings_session_sampler_reset(void *sampler) {
+  llama_sampling_reset(static_cast<llama_sampling_context *>(sampler));
 }
 
-extern "C" void bindings_session_sampling_drop(void *sampling) {
-  llama_sampling_free(static_cast<llama_sampling_context *>(sampling));
+extern "C" int32_t bindings_session_sampler_sample(void *sampler,
+                                                   void *session) {
+  return llama_sampling_sample(static_cast<llama_sampling_context *>(sampler),
+                               static_cast<llama_context *>(session), nullptr,
+                               0);
+}
+
+extern "C" void bindings_session_sampler_accept(void *sampler, void *session,
+                                                int32_t token) {
+  llama_sampling_accept(
+
+      static_cast<llama_sampling_context *>(sampler),
+      static_cast<llama_context *>(session), token, false);
+}
+
+extern "C" void bindings_session_sampler_drop(void *sampler) {
+  llama_sampling_free(static_cast<llama_sampling_context *>(sampler));
 }
 
 // Session sampling options
-extern "C" void *bindings_session_sampling_options_new() {
+extern "C" void *bindings_session_sampler_options_new() {
   return static_cast<void *>(new llama_sampling_params);
 }
 
 extern "C" float
-bindings_session_sampling_options_temperature(const void *options) {
+bindings_session_sampler_options_temperature(const void *options) {
   return static_cast<const llama_sampling_params *>(options)->temp;
 }
 
 extern "C" void
-bindings_session_sampling_options_set_temperature(void *options,
-                                                  const float value) {
+bindings_session_sampler_options_set_temperature(void *options,
+                                                 const float value) {
   static_cast<llama_sampling_params *>(options)->temp = value;
 }
 
-extern "C" float bindings_session_sampling_options_top_k(const void *options) {
+extern "C" float bindings_session_sampler_options_top_k(const void *options) {
   return static_cast<const llama_sampling_params *>(options)->top_k;
 }
 
-extern "C" void bindings_session_sampling_options_set_top_k(void *options,
-                                                            const float value) {
+extern "C" void bindings_session_sampler_options_set_top_k(void *options,
+                                                           const float value) {
   static_cast<llama_sampling_params *>(options)->top_k = value;
 }
 
-extern "C" float bindings_session_sampling_options_top_p(const void *options) {
+extern "C" float bindings_session_sampler_options_top_p(const void *options) {
   return static_cast<const llama_sampling_params *>(options)->top_p;
 }
 
-extern "C" void bindings_session_sampling_options_set_top_p(void *options,
-                                                            const float value) {
+extern "C" void bindings_session_sampler_options_set_top_p(void *options,
+                                                           const float value) {
   static_cast<llama_sampling_params *>(options)->top_p = value;
 }
 
-extern "C" void bindings_session_sampling_options_drop(void *options) {
+extern "C" void bindings_session_sampler_options_drop(void *options) {
   delete static_cast<llama_sampling_params *>(options);
 }
 
@@ -224,72 +239,14 @@ extern "C" void *bindings_session_batch_init(const uint32_t token_capacity,
                        static_cast<int32_t>(max_sequence_ids))));
 }
 
-extern "C" uint32_t bindings_session_batch_tokens_len(const void *batch) {
-  return static_cast<uint32_t>(
-      static_cast<const llama_batch *>(batch)->n_tokens);
+extern "C" void bindings_session_batch_clear(void *batch) {
+  llama_batch_clear(*static_cast<llama_batch *>(batch));
 }
 
-extern "C" void bindings_session_batch_tokens_set_len(void *batch,
-                                                      uint32_t value) {
-  static_cast<llama_batch *>(batch)->n_tokens = static_cast<int32_t>(value);
-}
-
-extern "C" const int32_t *bindings_session_batch_tokens_ptr(const void *batch) {
-  return const_cast<const int32_t *>(
-      static_cast<const llama_batch *>(batch)->token);
-}
-
-extern "C" int32_t *bindings_session_batch_tokens_mut_ptr(void *batch) {
-  return static_cast<llama_batch *>(batch)->token;
-}
-
-extern "C" const float *
-bindings_session_batch_embedding_ptr(const void *batch) {
-  return const_cast<const float *>(
-      static_cast<const llama_batch *>(batch)->embd);
-}
-
-extern "C" float *bindings_session_batch_embedding_mut_ptr(void *batch) {
-  return static_cast<llama_batch *>(batch)->embd;
-}
-
-extern "C" const int32_t *bindings_session_batch_pos_ptr(const void *batch) {
-  return const_cast<const int32_t *>(
-      static_cast<const llama_batch *>(batch)->pos);
-}
-
-extern "C" int32_t *bindings_session_batch_pos_mut_ptr(void *batch) {
-  return static_cast<llama_batch *>(batch)->pos;
-}
-
-extern "C" const int32_t *
-bindings_session_batch_sequence_id_len_ptr(const void *batch) {
-  return const_cast<const int32_t *>(
-      static_cast<const llama_batch *>(batch)->n_seq_id);
-}
-
-extern "C" int32_t *
-bindings_session_batch_sequence_id_len_mut_ptr(void *batch) {
-  return static_cast<llama_batch *>(batch)->n_seq_id;
-}
-
-extern "C" const int32_t **
-bindings_session_batch_sequence_id_ptr(const void *batch) {
-  return const_cast<const int32_t **>(
-      static_cast<const llama_batch *>(batch)->seq_id);
-}
-
-extern "C" int32_t **bindings_session_batch_sequence_id_mut_ptr(void *batch) {
-  return static_cast<llama_batch *>(batch)->seq_id;
-}
-
-extern "C" const int8_t *bindings_session_batch_logits_ptr(const void *batch) {
-  return const_cast<const int8_t *>(
-      static_cast<const llama_batch *>(batch)->logits);
-}
-
-extern "C" int8_t *bindings_session_batch_logits_mut_ptr(void *batch) {
-  return static_cast<llama_batch *>(batch)->logits;
+extern "C" void bindings_session_batch_add_token(void *batch, int32_t token,
+                                                 uint32_t index) {
+  llama_batch_add(*static_cast<llama_batch *>(batch), token,
+                  static_cast<uint32_t>(index), {0}, false);
 }
 
 extern "C" void bindings_session_batch_drop(void *batch) {
