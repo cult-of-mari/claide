@@ -6,7 +6,6 @@ use {
         fmt,
         mem::MaybeUninit,
         path::Path,
-        ptr,
     },
 };
 

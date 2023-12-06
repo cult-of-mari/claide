@@ -1,6 +1,6 @@
 use {
     crate::{owned_ptr::OwnedPtr, sys, Model},
-    std::{any, fmt},
+    std::{any, fmt, slice},
 };
 
 /// An inference session.
@@ -16,6 +16,59 @@ pub struct SessionOptions {
     pub(crate) sampling_options_ptr: OwnedPtr,
 }
 
+pub(crate) struct SessionBatch {
+    pub(crate) batch_ptr: OwnedPtr,
+    pub(crate) capacity: u16,
+}
+
+impl SessionBatch {
+    pub fn new(token_capacity: u16, embedding_size: u16, max_sequence_ids: u16) -> Self {
+        unsafe {
+            Self {
+                batch_ptr: OwnedPtr::new(
+                    sys::bindings_session_batch_init(
+                        token_capacity,
+                        embedding_size,
+                        max_sequence_ids,
+                    ),
+                    sys::bindings_session_batch_drop,
+                ),
+                capacity: token_capacity,
+            }
+        }
+    }
+
+    pub fn tokens_len(&self) -> u32 {
+        unsafe { sys::bindings_session_batch_tokens_len(self.batch_ptr.as_ptr()) }
+    }
+
+    pub unsafe fn set_tokens_len(&mut self, new_len: u32) {
+        sys::bindings_session_batch_tokens_set_len(self.batch_ptr.as_mut_ptr(), new_len)
+    }
+
+    pub fn tokens(&self) -> &[i32] {
+        unsafe {
+            slice::from_raw_parts(
+                dbg!(sys::bindings_session_batch_tokens_ptr(
+                    self.batch_ptr.as_ptr()
+                )),
+                self.capacity.try_into().unwrap(),
+            )
+        }
+    }
+
+    pub fn tokens_mut(&mut self) -> &mut [i32] {
+        unsafe {
+            slice::from_raw_parts_mut(
+                dbg!(sys::bindings_session_batch_tokens_mut_ptr(
+                    self.batch_ptr.as_mut_ptr()
+                )),
+                self.capacity.try_into().unwrap(),
+            )
+        }
+    }
+}
+
 impl Session {
     pub fn model(&self) -> &Model {
         &self.model
@@ -23,6 +76,14 @@ impl Session {
 
     pub fn into_model(self) -> Model {
         self.model
+    }
+
+    pub fn infer(&mut self, _tokens: &[i32]) {
+        let mut batch = SessionBatch::new(4098, 4096, 4096);
+
+        //println!("{:?}", batch.tokens_len());
+        println!("{:?}", batch.tokens());
+        println!("{:?}", batch.tokens().len());
     }
 }
 

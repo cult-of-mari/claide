@@ -1,4 +1,4 @@
-use llama::{ClipModel, ModelOptions, SessionOptions};
+use llama::{ModelOptions, SessionOptions};
 
 fn main() {
     llama::init(false);
@@ -20,7 +20,7 @@ fn main() {
 
     println!("{model:?}");
 
-    let session = SessionOptions::new().with_model(model);
+    let mut session = SessionOptions::new().with_model(model);
 
     println!("{session:?}");
 
@@ -37,4 +37,6 @@ fn main() {
     session.model().detokenize(&tokens, &mut string);
 
     println!("{string:?}");
+
+    session.infer(&tokens);
 }

@@ -47,11 +47,25 @@ extern "C" {
         special: bool,
     ) -> i32;
     pub fn bindings_session_batch_drop(batch: *mut ffi::c_void);
+    pub fn bindings_session_batch_embedding_mut_ptr(batch: *mut ffi::c_void) -> *mut f32;
+    pub fn bindings_session_batch_embedding_ptr(batch: *const ffi::c_void) -> *const f32;
     pub fn bindings_session_batch_init(
         token_capacity: u16,
         embedding_size: u16,
         max_sequence_ids: u16,
     ) -> *mut ffi::c_void;
+    pub fn bindings_session_batch_logits_mut_ptr(batch: *mut ffi::c_void) -> *mut *mut i8;
+    pub fn bindings_session_batch_logits_ptr(batch: *const ffi::c_void) -> *const *mut i8;
+    pub fn bindings_session_batch_pos_mut_ptr(batch: *mut ffi::c_void) -> *mut i32;
+    pub fn bindings_session_batch_pos_ptr(batch: *const ffi::c_void) -> *const i32;
+    pub fn bindings_session_batch_sequence_id_len_mut_ptr(batch: *mut ffi::c_void) -> *mut i32;
+    pub fn bindings_session_batch_sequence_id_len_ptr(batch: *const ffi::c_void) -> *const i32;
+    pub fn bindings_session_batch_sequence_id_mut_ptr(batch: *mut ffi::c_void) -> *mut *mut i32;
+    pub fn bindings_session_batch_sequence_id_ptr(batch: *const ffi::c_void) -> *const *mut i32;
+    pub fn bindings_session_batch_tokens_len(batch: *const ffi::c_void) -> u32;
+    pub fn bindings_session_batch_tokens_set_len(batch: *mut ffi::c_void, value: u32);
+    pub fn bindings_session_batch_tokens_mut_ptr(batch: *mut ffi::c_void) -> *mut i32;
+    pub fn bindings_session_batch_tokens_ptr(batch: *const ffi::c_void) -> *const i32;
     pub fn bindings_session_decode(
         session: *mut ffi::c_void,
         batch: *mut ffi::c_void,
