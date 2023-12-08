@@ -55,9 +55,14 @@ extern "C" {
         max_sequence_ids: u32,
     ) -> *mut ffi::c_void;
     pub fn bindings_session_batch_clear(batch: *mut ffi::c_void);
-    pub fn bindings_session_batch_add_token(batch: *mut ffi::c_void, token: i32, index: u32);
-    pub fn bindings_session_batch_logits_mut_ptr(batch: *mut ffi::c_void) -> *mut *mut i8;
-    pub fn bindings_session_batch_logits_ptr(batch: *const ffi::c_void) -> *const *mut i8;
+    pub fn bindings_session_batch_add_token(
+        batch: *mut ffi::c_void,
+        token: i32,
+        index: u32,
+        logits: bool,
+    );
+    pub fn bindings_session_batch_logits_mut_ptr(batch: *mut ffi::c_void) -> *mut i8;
+    pub fn bindings_session_batch_logits_ptr(batch: *const ffi::c_void) -> *const i8;
     pub fn bindings_session_batch_pos_mut_ptr(batch: *mut ffi::c_void) -> *mut i32;
     pub fn bindings_session_batch_pos_ptr(batch: *const ffi::c_void) -> *const i32;
     pub fn bindings_session_batch_sequence_id_len_mut_ptr(batch: *mut ffi::c_void) -> *mut i32;

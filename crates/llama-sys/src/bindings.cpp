@@ -244,9 +244,77 @@ extern "C" void bindings_session_batch_clear(void *batch) {
 }
 
 extern "C" void bindings_session_batch_add_token(void *batch, int32_t token,
-                                                 uint32_t index) {
+                                                 uint32_t index, bool logits) {
   llama_batch_add(*static_cast<llama_batch *>(batch), token,
-                  static_cast<uint32_t>(index), {0}, false);
+                  static_cast<uint32_t>(index), {0}, logits);
+}
+
+extern "C" uint32_t bindings_session_batch_tokens_len(const void *batch) {
+  return static_cast<uint32_t>(
+      static_cast<const llama_batch *>(batch)->n_tokens);
+}
+
+extern "C" void bindings_session_batch_tokens_set_len(void *batch,
+                                                      uint32_t value) {
+  static_cast<llama_batch *>(batch)->n_tokens = static_cast<int32_t>(value);
+}
+
+extern "C" const int32_t *bindings_session_batch_tokens_ptr(const void *batch) {
+  return const_cast<const int32_t *>(
+      static_cast<const llama_batch *>(batch)->token);
+}
+
+extern "C" int32_t *bindings_session_batch_tokens_mut_ptr(void *batch) {
+  return static_cast<llama_batch *>(batch)->token;
+}
+
+extern "C" const float *
+bindings_session_batch_embedding_ptr(const void *batch) {
+  return const_cast<const float *>(
+      static_cast<const llama_batch *>(batch)->embd);
+}
+
+extern "C" float *bindings_session_batch_embedding_mut_ptr(void *batch) {
+  return static_cast<llama_batch *>(batch)->embd;
+}
+
+extern "C" const int32_t *bindings_session_batch_pos_ptr(const void *batch) {
+  return const_cast<const int32_t *>(
+      static_cast<const llama_batch *>(batch)->pos);
+}
+
+extern "C" int32_t *bindings_session_batch_pos_mut_ptr(void *batch) {
+  return static_cast<llama_batch *>(batch)->pos;
+}
+
+extern "C" const int32_t *
+bindings_session_batch_sequence_id_len_ptr(const void *batch) {
+  return const_cast<const int32_t *>(
+      static_cast<const llama_batch *>(batch)->n_seq_id);
+}
+
+extern "C" int32_t *
+bindings_session_batch_sequence_id_len_mut_ptr(void *batch) {
+  return static_cast<llama_batch *>(batch)->n_seq_id;
+}
+
+extern "C" const int32_t **
+bindings_session_batch_sequence_id_ptr(const void *batch) {
+  return const_cast<const int32_t **>(
+      static_cast<const llama_batch *>(batch)->seq_id);
+}
+
+extern "C" int32_t **bindings_session_batch_sequence_id_mut_ptr(void *batch) {
+  return static_cast<llama_batch *>(batch)->seq_id;
+}
+
+extern "C" const int8_t *bindings_session_batch_logits_ptr(const void *batch) {
+  return const_cast<const int8_t *>(
+      static_cast<const llama_batch *>(batch)->logits);
+}
+
+extern "C" int8_t *bindings_session_batch_logits_mut_ptr(void *batch) {
+  return static_cast<llama_batch *>(batch)->logits;
 }
 
 extern "C" void bindings_session_batch_drop(void *batch) {

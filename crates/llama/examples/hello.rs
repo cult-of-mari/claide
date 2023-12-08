@@ -38,5 +38,7 @@ fn main() {
 
     println!("{string:?}");
 
-    session.infer(&tokens);
+    let result = session.infer(&tokens);
+
+    println!("{result:?}");
 }

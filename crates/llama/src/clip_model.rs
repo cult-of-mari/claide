@@ -1,11 +1,6 @@
 use {
     crate::{owned_ptr::OwnedPtr, sys, Error},
-    std::{
-        any,
-        ffi::{CString},
-        fmt,
-        path::Path,
-    },
+    std::{any, ffi::CString, fmt, path::Path},
 };
 
 pub struct ClipModel {

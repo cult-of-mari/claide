@@ -38,15 +38,64 @@ impl SessionBatch {
         }
     }
 
-    pub fn add_token(&mut self, token: i32, index: u32) {
+    pub fn add_token(&mut self, token: i32, index: u32, logits: bool) {
         unsafe {
-            sys::bindings_session_batch_add_token(self.batch_ptr.as_mut_ptr(), token, index);
+            sys::bindings_session_batch_add_token(
+                self.batch_ptr.as_mut_ptr(),
+                token,
+                index,
+                logits,
+            );
         }
     }
 
     pub fn clear(&mut self) {
         unsafe {
             sys::bindings_session_batch_clear(self.batch_ptr.as_mut_ptr());
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        unsafe {
+            sys::bindings_session_batch_tokens_len(self.batch_ptr.as_ptr())
+                .try_into()
+                .unwrap()
+        }
+    }
+
+    pub fn tokens(&self) -> &[i32] {
+        unsafe {
+            slice::from_raw_parts(
+                sys::bindings_session_batch_tokens_ptr(self.batch_ptr.as_ptr()),
+                self.len(),
+            )
+        }
+    }
+
+    pub fn tokens_mut(&mut self) -> &mut [i32] {
+        unsafe {
+            slice::from_raw_parts_mut(
+                sys::bindings_session_batch_tokens_mut_ptr(self.batch_ptr.as_mut_ptr()),
+                self.len(),
+            )
+        }
+    }
+
+    pub fn logits(&self) -> &[bool] {
+        unsafe {
+            slice::from_raw_parts(
+                sys::bindings_session_batch_logits_ptr(self.batch_ptr.as_ptr()).cast(),
+                self.len(),
+            )
+        }
+    }
+
+    pub fn logits_mut(&mut self) -> &mut [bool] {
+        unsafe {
+            slice::from_raw_parts_mut(
+                sys::bindings_session_batch_logits_mut_ptr(self.batch_ptr.as_mut_ptr()).cast(),
+                self.len(),
+            )
         }
     }
 }
@@ -69,38 +118,55 @@ impl Session {
         }
     }
 
-    pub fn infer(&mut self, tokens: &[i32]) {
-        let mut batch = SessionBatch::new(4096, 0, 4096);
+    pub fn sample(&mut self) -> i32 {
+        unsafe {
+            sys::bindings_session_sampler_sample(
+                self.sampler_ptr.as_mut_ptr(),
+                self.session_ptr.as_mut_ptr(),
+            )
+        }
+    }
+
+    pub fn accept(&mut self, token: i32) {
+        unsafe {
+            sys::bindings_session_sampler_accept(
+                self.sampler_ptr.as_mut_ptr(),
+                self.session_ptr.as_mut_ptr(),
+                token,
+            );
+        }
+    }
+
+    pub fn infer(&mut self, tokens: &[i32]) -> String {
+        let mut batch = SessionBatch::new(512, 0, 1);
 
         for (index, token) in tokens.iter().copied().enumerate() {
-            batch.add_token(token, index as u32);
+            batch.add_token(token, index as u32, false);
         }
 
-        unsafe {
-            for i in tokens.len()..100 {
-                self.decode(&mut batch);
+        if let Some(logit) = batch.logits_mut().last_mut() {
+            *logit = true;
+        }
 
-                let token = sys::bindings_session_sampler_sample(
-                    self.sampler_ptr.as_mut_ptr(),
-                    self.session_ptr.as_mut_ptr(),
-                );
+        let mut tokens = Vec::new();
 
-                let mut string = String::new();
+        for i in tokens.len()..100 {
+            self.decode(&mut batch);
 
-                self.model.detokenize(&[token], &mut string);
+            let token = self.sample();
 
-                println!("{string:?}");
+            self.accept(token);
 
-                sys::bindings_session_sampler_accept(
-                    self.sampler_ptr.as_mut_ptr(),
-                    self.session_ptr.as_mut_ptr(),
-                    token,
-                );
+            batch.clear();
+            batch.add_token(token, i as u32, true);
+            tokens.push(token);
+        }
 
-                batch.clear();
-                batch.add_token(token, i as u32);
-            }
-        };
+        let mut string = String::new();
+
+        self.model.detokenize(&tokens, &mut string);
+
+        string
     }
 }
 
