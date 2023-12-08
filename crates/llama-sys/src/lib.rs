@@ -90,4 +90,13 @@ extern "C" {
     pub fn bindings_session_sampler_options_top_k(options: *const ffi::c_void) -> f32;
     pub fn bindings_session_sampler_options_top_p(options: *const ffi::c_void) -> f32;
     pub fn bindings_session_sampler_reset(sampler: *mut ffi::c_void);
+    pub fn bindings_session_sampler_sample(
+        sampler: *mut ffi::c_void,
+        session: *mut ffi::c_void,
+    ) -> i32;
+    pub fn bindings_session_sampler_accept(
+        sampler: *mut ffi::c_void,
+        session: *mut ffi::c_void,
+        token: i32,
+    );
 }

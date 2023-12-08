@@ -16,7 +16,7 @@ pub struct SessionOptions {
     pub(crate) sampler_options_ptr: OwnedPtr,
 }
 
-pub(crate) struct SessionBatch {
+pub struct SessionBatch {
     pub(crate) batch_ptr: OwnedPtr,
     pub(crate) capacity: u32,
 }
@@ -43,6 +43,12 @@ impl SessionBatch {
             sys::bindings_session_batch_add_token(self.batch_ptr.as_mut_ptr(), token, index);
         }
     }
+
+    pub fn clear(&mut self) {
+        unsafe {
+            sys::bindings_session_batch_clear(self.batch_ptr.as_mut_ptr());
+        }
+    }
 }
 
 impl Session {
@@ -54,21 +60,47 @@ impl Session {
         self.model
     }
 
+    pub fn decode(&mut self, batch: &mut SessionBatch) {
+        unsafe {
+            sys::bindings_session_decode(
+                self.session_ptr.as_mut_ptr(),
+                batch.batch_ptr.as_mut_ptr(),
+            );
+        }
+    }
+
     pub fn infer(&mut self, tokens: &[i32]) {
         let mut batch = SessionBatch::new(4096, 0, 4096);
 
         for (index, token) in tokens.iter().copied().enumerate() {
-            batch.add_token(token, index.try_into().unwrap());
+            batch.add_token(token, index as u32);
         }
 
         unsafe {
-            let tokens = sys::bindings_session_decode(
-                self.session_ptr.as_mut_ptr(),
-                batch.batch_ptr.as_mut_ptr(),
-            );
+            for i in tokens.len()..100 {
+                self.decode(&mut batch);
 
-            println!("{tokens:?}");
-        }
+                let token = sys::bindings_session_sampler_sample(
+                    self.sampler_ptr.as_mut_ptr(),
+                    self.session_ptr.as_mut_ptr(),
+                );
+
+                let mut string = String::new();
+
+                self.model.detokenize(&[token], &mut string);
+
+                println!("{string:?}");
+
+                sys::bindings_session_sampler_accept(
+                    self.sampler_ptr.as_mut_ptr(),
+                    self.session_ptr.as_mut_ptr(),
+                    token,
+                );
+
+                batch.clear();
+                batch.add_token(token, i as u32);
+            }
+        };
     }
 }
 
